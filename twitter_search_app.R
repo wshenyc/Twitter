@@ -7,7 +7,15 @@ library(glue)
 library(lubridate)
 library(shinydashboard)
 
-#twitter auth token 
+##----TWITTER AUTHORIZATION TOKEN--------------------------------------------
+#
+# Description: The section checks that the Twitter auth token is available and 
+# allows users to use Winnie's twitter auth code to call the Twitter API. 
+# This section will be updated with a developer API, which is pending approval.
+#
+# Source: https://github.com/gadenbuie/tweet-conf-dash
+#____________________________________________________________________________
+
 TWEETS_MANAGE_UPDATES <- TRUE
 
 TWEETS_MANAGE_TWITTER_PAT_RDS <- "twitter_token.rds"
@@ -30,6 +38,11 @@ if (TWEETS_MANAGE_UPDATES) {
     }
   }
 }
+
+##----TWEET CLEANER FUNCTION-------------------------------------------------
+#
+# Description: Custom function to clean the results of RTweets functions
+#____________________________________________________________________________
 
 tweet_cleaner <- function (df) {
   df <- select(df, created_at,
@@ -69,12 +82,18 @@ tweet_cleaner <- function (df) {
 }
 
 
-api_key <- "afYS4vbIlPAj096E60c4W1fiK"
+##----USER INTERFACE----------------------------------------------------------
+#
+# Description: sets up UI
+#____________________________________________________________________________
+
 
 ui <- dashboardPage(
   
   # Application title
-  dashboardHeader(title = "Twitter Search"),
+  dashboardHeader(
+    title = span("Twitter Search",
+                 style = "font: Avenir;")),
   
   # Sidebar 
   dashboardSidebar( 
@@ -97,8 +116,8 @@ ui <- dashboardPage(
                menuSubItem(icon = NULL,
                            actionButton("keyword_search_button", "Keyword Search"))),
       
-      menuItem("User Search",
-               icon = icon("user"),
+      menuItem("User(s) Search",
+               icon = icon("users"),
                menuSubItem(icon = NULL,
                            numericInput("num_tweets_to_download",
                                         "Number of Tweets to Download:",
@@ -109,7 +128,7 @@ ui <- dashboardPage(
                menuSubItem(icon = NULL,
                            textInput('user_search',
                                      'User Search:',
-                                     placeholder = "Enter Twitter user")),
+                                     placeholder = "Enter Twitter user(s)")),
                menuSubItem(icon = NULL,
                            actionButton("user_search_button", "User Search"))),
       
@@ -122,37 +141,36 @@ ui <- dashboardPage(
                                         max = 18000,
                                         value = 200,
                                         step = 100)),
+  
                menuSubItem(icon = NULL,
-                           selectInput(
-                             "nyc_electeds",
-                             "NYC Electeds",
-                             c("Mayor Adams" = "NYCMayor",
-                               "CM Hanif"= "CMShahanaHanif"),
-                             selected = NULL,
-                             multiple = TRUE,
-                             selectize = TRUE,
-                             width = NULL,
-                             size = NULL
-                             )),
+                           shinyWidgets::pickerInput(
+                           "nyc_electeds",
+                           "NYC Electeds", 
+                           choices=c("Mayor Adams" = "NYCMayor",
+                                     "CM Hanif"= "CMShahanaHanif"), 
+                           options = list(`actions-box` = TRUE,
+                                          `live-search` = TRUE,
+                                          `live-search-placeholder` = "Search name"),
+                           multiple = T)),
+               
                
                menuSubItem(icon = NULL,
-                           selectInput(
+                           shinyWidgets::pickerInput(
                              "nys_electeds",
-                             "NYS Electeds",
-                             c("AM Niou" = "yuhline",
-                               "Sen Kavanagh" = "BrianKavanaghNY",
-                               "Sen Zellnor" = "zellnor4ny"),
-                             selected = NULL,
-                             multiple = TRUE,
-                             selectize = TRUE,
-                             width = NULL,
-                             size = NULL
-                           )),
+                             "NYS Electeds", 
+                             choices=c("AM Niou" = "yuhline",
+                                       "Sen Kavanagh" = "BrianKavanaghNY",
+                                       "Sen Zellnor" = "zellnor4ny"),
+                             options = list(`actions-box` = TRUE,
+                                            `live-search` = TRUE,
+                                            `live-search-placeholder` = "Search name"),
+                             multiple = T)),
                
-               # menuSubItem(icon = NULL,
-               #             checkboxInput("nyc_electeds", "NYC Electeds only?", FALSE)),
-               # menuSubItem(icon = NULL,
-               #             checkboxInput("nys_electeds", "NYS Electeds only", FALSE)),
+               menuSubItem(icon = NULL,
+                           textInput('filter_electeds',
+                                     'Filter:',
+                                     placeholder = "Enter keywords")),
+               
                menuSubItem(icon = NULL,
                            actionButton("electeds_search", "Elected Search")))
       
@@ -166,17 +184,33 @@ ui <- dashboardPage(
   ),
   
   # Show results
+
   dashboardBody(
-    
-    DTOutput("tweet_table"),
-    
-    
-  )
-) 
 
+   
+    fluidRow(
+      # shiny::req("tweet_table"),
+      #    shinydashboard::box(
+      #      width  = 12,
+      #      div(style = 'overflow-x:scroll',
+      #          DTOutput("tweet_table"), width = "100%")
+      #  )
+        
+      shinydashboard::box(
+        width = 12,
+      div(style = "overflow-x: scroll",
+        DTOutput("tweet_table", width = "100%"))
+      )
+      )
+   
+)
+)
 
+##----SERVER LOGIC-----------------------------------------------------------
+#
+# Description: sets up server logic
+#____________________________________________________________________________
 
-# Define server logic 
 server <- function(input, output) {
   
   #creating a blank reactive val to save the results of the Twitter searches in
@@ -269,31 +303,48 @@ server <- function(input, output) {
     
     #setting blank variable
     user_input <- ""
+    filter_input <- ""
     
-    #all electeds
-    #will probably be reading in a csv file at a later date 
-    # all_nys_electeds <- c("yuhline", "BrianKavanaghNY", "zellnor4ny")
-    # all_nyc_electeds <- c("NYCMayor", "CMShahanaHanif", "pisancheznyc")
-    # nys_nyc_electeds <- c(all_nyc_electeds, all_nys_electeds)
-    
-    #checking if the verified check box was selected and returning only verified results if true
-    if (input$nys_electeds & !input$nyc_electeds) {
+    #testing whether nys electeds and/or nyc electeds are selected 
+    if (length(input$nys_electeds)>0 & length(input$nyc_electeds) == 0) {
       user_input <- input$nys_electeds
-    } else if(!input$nys_electeds & input$nyc_electeds) {
+    } else if(length(input$nys_electeds)==0 & length(input$nyc_electeds) > 0) {
       user_input <- input$nyc_electeds
-    } else if (input$nys_electeds & input$nyc_electeds) {
-      user_input <- unlist(paste(input$nys_electeds, input$nyc_electeds))
+    } else if (length(input$nys_electeds)>0 & length(input$nyc_electeds) > 0) {
+      #this line of code is pasting the selected nys and nyc electeds together
+      #then it is splitting those into separate strings based on whitespace
+      #finally it is converting the list into a vector
+      #so that the get_timeline() function works
+      user_input <- unlist(str_split(paste(input$nys_electeds, input$nyc_electeds), "[:space:]"))
     } else {
       user_input
     }
     
-    print(user_input)
+    #testing if there is a filter
+    if (str_detect(input$filter_electeds, "[:space:]")) {
+      filter_input <- unlist(str_split(filter_input, "[:space:]"))
+    } else if (!is.na(input$filter_search)) {
+      filter_input <- input$filter_search 
+    } else {
+      
+    }
     
-    df <- get_timeline(user_input, n = input$num_tweets_to_download) %>%
-      tweet_cleaner()
     
-    #adding the results of the search_tweets to the reactive value 
-    rv(df)
+    if (is.na(filter_input)) {
+      df_electeds <- get_timeline(user_input, n = input$num_tweets_to_download) %>%
+        tweet_cleaner()
+    } else {
+      df_electeds <- get_timeline(user_input, n = input$num_tweets_to_download) %>%
+        filter(grepl(paste(filter_input, collapse = "|"), text, ignore.case = TRUE)) %>% 
+        tweet_cleaner()
+    }
+    
+
+    
+    print(filter_input)
+    
+    #adding the results of the search_tweets to the reactive value
+    rv(df_electeds)
     
   })
   
@@ -328,10 +379,10 @@ server <- function(input, output) {
                                            dat <- rbind(dat, data.frame(x = rnorm(1), y = rnorm(1)))
                                            
                                            # Increment the progress bar, and update the detail text.
-                                           incProgress(1/n, detail = paste("Loading", i*10, "%"))
+                                           incProgress(1/n, detail = paste(i*10, "%", sep = ""))
                                            
-                                           # Pause for 0.1 seconds to simulate a long computation.
-                                           Sys.sleep(0.1)
+                                           # Pause for 0.05 seconds to simulate a long computation.
+                                           Sys.sleep(0.05)
                                          }
                                          
                                        })
