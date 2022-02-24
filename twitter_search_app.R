@@ -113,7 +113,7 @@ filter_func <- function(df, filter_flag, filter_input, user_input, num_tweets) {
 #most liked tweet
 most_liked_func <- function(df) {
   renderTable(
-    if(max(df$`Like Count`) > 0 & any("No" == df$`Retweet`)) {
+    if(max(df$`Like Count`) > 0 & any("No" == df$`Retweet?`)) {
       df %>%
         janitor::clean_names() %>%
         filter(retweet == "No") %>% 
@@ -136,7 +136,7 @@ most_liked_func <- function(df) {
 #most retweeted tweet
 most_rt_func <- function(df) {
 renderTable(
-  if(max(df$`Retweet Count`) > 0 & any("No" == df$`Retweet`)) {
+  if(max(df$`Retweet Count`) > 0 & any("No" == df$`Retweet?`)) {
     df %>%
       janitor::clean_names() %>%
       filter(retweet == "No") %>% 
@@ -148,8 +148,35 @@ renderTable(
   }else {
     return("No original tweets with more than 0 RTs")
   }
-  )}
+)}
 
+##----MOST ENGAGEMENT -------------------------------------------------------
+#
+# Description: Find users with highest level of engagement.
+# Engagement score is calculated as: Retweets*2 + Likes
+#____________________________________________________________________________
+
+most_eng_users <- function(df) {
+  temp_df <- data.frame()
+  renderTable(
+    if(any("No" == df$`Retweet?`)) {
+      temp_df <- df %>%
+        janitor::clean_names() %>% 
+        filter(retweet == "No") %>% 
+        group_by(twitter_user) %>% 
+        mutate(eng_score = as.integer(sum(retweet_count)*2+sum(like_count))) %>% 
+        distinct(twitter_user, .keep_all = T) %>% 
+        filter(quantile(test_eng$eng_score, probs = .90) < eng_score) %>% #top 10%
+        arrange(desc(eng_score)) %>%
+        select(twitter_user, eng_score) %>% 
+        head(10) %>% 
+        rename("Twitter User" = twitter_user,
+               "Engagement Score" = eng_score)
+    } else {
+      return("Search results returned no original tweets")
+    }
+  )
+}
 
 ##----USER INPUT CHECK-------------------------------------------------------
 #
@@ -274,7 +301,6 @@ ui <- dashboardPage(
   # Show results
 
   dashboardBody(
-
    
     fluidRow(
       shinydashboard::box(
@@ -283,9 +309,17 @@ ui <- dashboardPage(
         status = "primary",
         div(style = "overflow-x: scroll",
             DTOutput("tweet_table", width = "100%"))
-        )
-      ),
+        )),
+    
     fluidRow(
+      column(4,
+             shinydashboard::box(
+               width = 10,
+               title = "Most 'Popular' Users",
+               status = "primary",
+               div(style = "overflow-x:scroll",
+                   tableOutput("pop_users"), width = "100%")
+             )),
       column(4, 
              shinydashboard::box(
                width = 10,
@@ -348,27 +382,18 @@ server <- function(input, output) {
     }
     
    
-    
     #setting df variable to the results of search_tweets
     df <- search_tweets(user_input, n = input$num_tweets_to_download) %>% 
       tweet_cleaner() #calling custom function 
   
 ##----SUMMARY TABLES---------------------------------------------------------
 #
-# Description: Calculates most liked org. tweet & most RT'd
+# Description: Calculates most liked org. tweet & most RT'd & users w/ high
+# levels of engagement
 #____________________________________________________________________________
     
-    #summary df
-    #returning users with the most tweets 
-    # df_sum <- df %>%
-    #   janitor::clean_names() %>% 
-    #   count(twitter_user) %>% 
-    #   filter(n > quantile(n, probs = .90)) %>% #taking the top 10%
-    #   arrange(desc(n)) %>%
-    #   rename('Number of Tweets' = n,
-    #          'Twitter User' = twitter_user) %>%
-    #   select('Twitter User', 'Number of Tweets') %>% 
-    #   head(10)
+    #users with highest engagement
+    output$pop_users <- most_eng_users(df)
     
     #most liked tweet
     output$most_liked <- most_liked_func(df)
