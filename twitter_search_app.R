@@ -81,6 +81,91 @@ tweet_cleaner <- function (df) {
   
 }
 
+##----FILTER FUNCTION---------------------------------------------------------
+#
+# Description: custom function to filter user search results
+#____________________________________________________________________________
+
+filter_func <- function(df, filter_flag, filter_input, user_input, num_tweets) {
+  # checking if filter input has multiple strings
+  if (filter_flag == TRUE & str_detect(filter_input, "[:space:]")) {
+    filter_input <- unlist(str_split(filter_input, "[:space:]"))
+    df <- get_timeline(user_input, n = num_tweets) %>%
+    filter(grepl(paste(filter_input, collapse = "|"), text, ignore.case = TRUE)) %>% 
+    tweet_cleaner()
+  # checking if filter exists and is not multiple strings
+    } else if (filter_flag == TRUE & !str_detect(filter_input, "[:space:]")) {
+      df <- get_timeline(user_input, n = num_tweets) %>%
+        filter(grepl(filter_input, text, ignore.case = TRUE)) %>% 
+        tweet_cleaner()
+  #if no filter, just do standard search
+      } else {
+        df <- get_timeline(user_input, n = num_tweets) %>%
+          tweet_cleaner()
+      }
+  } 
+
+##----MOST LIKED FUNCTION------------------------------------------------
+#
+# Description: Find most liked original tweet 
+#____________________________________________________________________________
+
+#most liked tweet
+most_liked_func <- function(df) {
+  renderTable(
+    if(max(df$`Like Count`) > 0 & any("No" == df$`Retweet`)) {
+      df %>%
+        janitor::clean_names() %>%
+        filter(retweet == "No") %>% 
+        filter(like_count == max(like_count)) %>%
+        select(twitter_user, tweet, like_count) %>%
+        rename("Twitter User" = twitter_user,
+               "Tweet" = tweet,
+               "Like Count" = like_count)
+    } else {
+      return("No original tweets with more than 0 likes")
+    }
+  )
+}
+
+##----MOST RETWEETED FUNCTION------------------------------------------------
+#
+# Description: Find most retweeted original tweet 
+#____________________________________________________________________________
+
+#most retweeted tweet
+most_rt_func <- function(df) {
+renderTable(
+  if(max(df$`Retweet Count`) > 0 & any("No" == df$`Retweet`)) {
+    df %>%
+      janitor::clean_names() %>%
+      filter(retweet == "No") %>% 
+      filter(retweet_count == max(retweet_count)) %>%
+      select(twitter_user, tweet, retweet_count) %>%
+      rename("Twitter User" = twitter_user,
+             "Tweet" = tweet,
+             "Retweet Count" = retweet_count)
+  }else {
+    return("No original tweets with more than 0 RTs")
+  }
+  )}
+
+
+##----USER INPUT CHECK-------------------------------------------------------
+#
+# Description: Check validity of user input
+#____________________________________________________________________________
+
+# input_check <- function(user_input) {
+#   if (is.null(user_input)) {
+#     return()
+#   }
+# }
+
+#things to check for are: is null, only punctuation 
+
+###also need to check for if what a user enters returns an empty table
+###to tell them that! 
 
 ##----USER INTERFACE----------------------------------------------------------
 #
@@ -107,12 +192,16 @@ ui <- dashboardPage(
                                         max = 18000,
                                         value = 200,
                                         step = 100)),
-               menuSubItem(icon = NULL,
+              menuSubItem(icon = NULL,
+                          
                            textInput('search_terms',
                                      "Keywords Search:",
                                      placeholder = "Enter search query")),
+         
                menuSubItem(icon = NULL,
                            checkboxInput("verified", "Verified accounts only?", FALSE)),
+              menuSubItem(icon = NULL,
+                          checkboxInput("org_only", "No retweets?", FALSE)),
                menuSubItem(icon = NULL,
                            actionButton("keyword_search_button", "Keyword Search"))),
       
@@ -129,6 +218,11 @@ ui <- dashboardPage(
                            textInput('user_search',
                                      'User Search:',
                                      placeholder = "Enter Twitter user(s)")),
+               
+               menuSubItem(icon = NULL,
+                           textInput('filter_users',
+                                     'Filter:',
+                                     placeholder = "Enter keywords")),
                menuSubItem(icon = NULL,
                            actionButton("user_search_button", "User Search"))),
       
@@ -174,12 +268,6 @@ ui <- dashboardPage(
                menuSubItem(icon = NULL,
                            actionButton("electeds_search", "Elected Search")))
       
-      
-      # DTOutput("most_liked_tweet"),
-      # DTOutput("most_retweeted_tweet"),
-      
-      # DTOutput("summary_table"),
-      
     )
   ),
   
@@ -189,21 +277,33 @@ ui <- dashboardPage(
 
    
     fluidRow(
-      # shiny::req("tweet_table"),
-      #    shinydashboard::box(
-      #      width  = 12,
-      #      div(style = 'overflow-x:scroll',
-      #          DTOutput("tweet_table"), width = "100%")
-      #  )
-        
       shinydashboard::box(
         width = 12,
-      div(style = "overflow-x: scroll",
-        DTOutput("tweet_table", width = "100%"))
-      )
-      )
-   
-)
+        title = p("Tweet Table", style = 'font-size:24px;'),
+        status = "primary",
+        div(style = "overflow-x: scroll",
+            DTOutput("tweet_table", width = "100%"))
+        )
+      ),
+    fluidRow(
+      column(4, 
+             shinydashboard::box(
+               width = 10,
+               title = "Most Liked Tweet",
+               status = "primary",
+               div(style = "overflow-x:scroll",
+                   tableOutput("most_liked"), width = "100%"))
+             ),
+      column(4,
+             shinydashboard::box(
+               width = 10,
+               title = "Most RT'd Tweet",
+               status = "primary",
+               div(style = "overflow-x:scroll",
+                   tableOutput("most_rt"), width ="100%"))
+             )
+    )
+   )
 )
 
 ##----SERVER LOGIC-----------------------------------------------------------
@@ -223,66 +323,79 @@ server <- function(input, output) {
   #creating blank dataframe
   df <- data.frame()
   
+  
+##----KEYWORD SEARCH---------------------------------------------------------
+#
+# Description: sets up keyword search
+#____________________________________________________________________________
+  
   observeEvent(input$keyword_search_button, {
     
     user_input <- input$search_terms
     
     #checking if the verified check box was selected and returning only verified results if true
-    if (input$verified) {
+    if (input$verified & !input$org_only) {
       filter <- ' filter:verified'
+      user_input <- str_glue('{user_input}{filter}')
+    } else if (!input$verified & input$org_only) { 
+      filter <- ' -filter:retweets'
+      user_input <- str_glue('{user_input}{filter}')
+    } else if (input$verified & input$org_only) {
+      filter <- ' -filter:retweets filter:verified'
       user_input <- str_glue('{user_input}{filter}')
     } else {
       user_input
     }
     
+   
+    
     #setting df variable to the results of search_tweets
     df <- search_tweets(user_input, n = input$num_tweets_to_download) %>% 
-      tweet_cleaner() #calling custom function from the helpers.R file
+      tweet_cleaner() #calling custom function 
+  
+##----SUMMARY TABLES---------------------------------------------------------
+#
+# Description: Calculates most liked org. tweet & most RT'd
+#____________________________________________________________________________
     
     #summary df
     #returning users with the most tweets 
-    df_sum <- df %>%
-      janitor::clean_names() %>% 
-      count(twitter_user) %>% 
-      filter(n > quantile(n, probs = .90)) %>% #taking the top 10%
-      arrange(desc(n)) %>%
-      rename('Number of Tweets' = n,
-             'Twitter User' = twitter_user) %>%
-      select('Twitter User', 'Number of Tweets') %>% 
-      head(10)
+    # df_sum <- df %>%
+    #   janitor::clean_names() %>% 
+    #   count(twitter_user) %>% 
+    #   filter(n > quantile(n, probs = .90)) %>% #taking the top 10%
+    #   arrange(desc(n)) %>%
+    #   rename('Number of Tweets' = n,
+    #          'Twitter User' = twitter_user) %>%
+    #   select('Twitter User', 'Number of Tweets') %>% 
+    #   head(10)
     
-    #most retweeted and most favorited tweets
-    df_popular <- df %>% 
-      janitor::clean_names() %>% 
-      filter(like_count == max(like_count)) %>% 
-      select(twitter_user, tweet, like_count) %>% 
-      rename("Twitter User" = twitter_user,
-             "Tweet" = tweet,
-             "Like Count" = like_count)
+    #most liked tweet
+    output$most_liked <- most_liked_func(df)
     
-    df_retweeted <- df %>% 
-      janitor::clean_names() %>% 
-      filter(retweet_count == max(retweet_count)) %>% 
-      head(1) %>% 
-      select(twitter_user, tweet, retweet_count) %>% 
-      rename("Twitter User" = twitter_user,
-             "Tweet" = tweet,
-             "Retweet Count" = retweet_count)
-    
-    
+    #most retweeted tweet
+    output$most_rt <- most_rt_func(df)
+
     #adding the results of the search_tweets to the reactive value 
     rv(df)
-    summary(df_sum)
-    most_liked(df_popular)
-    most_retweet(df_retweeted)
   })
   
-  
+
+##----USER SEARCH------------------------------------------------------------
+#
+# Description: sets up user search & filter
+#____________________________________________________________________________
   
   #get timelines for specific users 
   observeEvent(input$user_search_button, {
     
     user_input <- input$user_search
+    num_tweets <- input$num_tweets_to_download
+    
+    #blank vars
+    filter_flag <- FALSE
+    filter_input <- ""
+    df <- data.frame()
     
     if(str_detect(user_input, "[:space:]")) {
       user_input <- unlist(str_split(user_input, "[:space:]"))
@@ -290,20 +403,43 @@ server <- function(input, output) {
       user_input
     }
     
-    df <- get_timeline(user_input, n = input$num_tweets_to_download) %>%
-      tweet_cleaner()
+    # testing if there is a filter
+    if (length(input$filter_users) > 0) {
+      filter_flag <- TRUE
+      filter_input <- input$filter_users
+    } else {
+    }
+    
+    #filter function
+    df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
+    
+    #most liked tweet
+    output$most_liked <- most_liked_func(df)
+    
+    #most retweeted tweet
+    output$most_rt <- most_rt_func(df)
     
     #adding the results of the search_tweets to the reactive value 
     rv(df)
     
   })
   
+##----ELECTEDS SEARCH--------------------------------------------------------
+#
+# Description: sets up electeds search & filter
+#____________________________________________________________________________
+  
+  
   #get timeline search for electeds
   observeEvent(input$electeds_search, {
+   
+    num_tweets <- input$num_tweets_to_download
     
-    #setting blank variable
+    #setting blank variables
     user_input <- ""
     filter_input <- ""
+    filter_flag <- FALSE
+    df <- data.frame()
     
     #testing whether nys electeds and/or nyc electeds are selected 
     if (length(input$nys_electeds)>0 & length(input$nyc_electeds) == 0) {
@@ -320,33 +456,32 @@ server <- function(input, output) {
       user_input
     }
     
-    #testing if there is a filter
-    if (str_detect(input$filter_electeds, "[:space:]")) {
-      filter_input <- unlist(str_split(filter_input, "[:space:]"))
-    } else if (!is.na(input$filter_search)) {
-      filter_input <- input$filter_search 
+    # testing if there is a filter
+    if (length(input$filter_electeds) > 0) {
+      filter_flag <- TRUE
+      filter_input <- input$filter_electeds
     } else {
-      
     }
     
+    #filter function
+    df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
     
-    if (is.na(filter_input)) {
-      df_electeds <- get_timeline(user_input, n = input$num_tweets_to_download) %>%
-        tweet_cleaner()
-    } else {
-      df_electeds <- get_timeline(user_input, n = input$num_tweets_to_download) %>%
-        filter(grepl(paste(filter_input, collapse = "|"), text, ignore.case = TRUE)) %>% 
-        tweet_cleaner()
-    }
+    #most liked tweet
+    output$most_liked <- most_liked_func(df)
     
-
-    
-    print(filter_input)
+    #most retweeted tweet
+    output$most_rt <- most_rt_func(df)
     
     #adding the results of the search_tweets to the reactive value
-    rv(df_electeds)
+    rv(df)
     
   })
+  
+##----TWEET TABLE & LOADING BAR----------------------------------------------
+#
+# Description: sets up tweet table & creates a loading bar
+#____________________________________________________________________________
+  
   
   #saves the dfs generated from above to the tweet_table var on the UI
   output$tweet_table <- DT::renderDT(server = FALSE, #setting server as false will render all results at once, potentially affecting load times
@@ -393,32 +528,7 @@ server <- function(input, output) {
                                        rv()
                                      })
   
-  ###this section needs updating
-  #generating tables for the most liked/retweeted tweets
-  output$most_liked_tweet <- DT::renderDT(options = list(dom = 't'), {
-    #returning other reactive value
-    most_liked()
-  })
-  
-  output$most_retweeted_tweet <- DT::renderDT(options = list(dom = 't'), {
-    #returning other reactive value
-    most_retweet()
-  })
-  
-  output$summary_table <- DT::renderDT(options = list(dom = 't'), {
-    #returning other reactive value
-    summary()
-  })
-  
-  
-  
-  #generate a summary table based on the tweet table
-  output$summary_table <- DT::renderDT(options = list(dom = 't'), {
-    #returning other reactive value
-    summary()
-  })
-  
-  
+
 }
 
 # Run the application 
