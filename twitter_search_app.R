@@ -87,23 +87,44 @@ tweet_cleaner <- function (df) {
 #____________________________________________________________________________
 
 filter_func <- function(df, filter_flag, filter_input, user_input, num_tweets) {
+  
+  if (filter_flag == TRUE & !str_detect(filter_input, "[:alpha:]")) {
+    df <- data.frame(Message = c("Filter input must include at least 1 letter."))
+  } else { 
+  
   # checking if filter input has multiple strings
   if (filter_flag == TRUE & str_detect(filter_input, "[:space:]")) {
     filter_input <- unlist(str_split(filter_input, "[:space:]"))
-    df <- get_timeline(user_input, n = num_tweets) %>%
-    filter(grepl(paste(filter_input, collapse = "|"), text, ignore.case = TRUE)) %>% 
-    tweet_cleaner()
+    df <- get_timeline(user_input, n = num_tweets) 
+    if (length(df) > 0) {
+    df <- df %>% 
+      filter(grepl(paste(filter_input, collapse = "|"), text, ignore.case = TRUE)) %>% 
+      tweet_cleaner()
+    } else {
+      df <- data.frame(message = c("Your search returned no results."))
+    }
   # checking if filter exists and is not multiple strings
     } else if (filter_flag == TRUE & !str_detect(filter_input, "[:space:]")) {
-      df <- get_timeline(user_input, n = num_tweets) %>%
-        filter(grepl(filter_input, text, ignore.case = TRUE)) %>% 
+      df <- get_timeline(user_input, n = num_tweets)
+      if (length(df) >0) {
+        df <- df %>% 
+          filter(grepl(filter_input, text, ignore.case = TRUE)) %>% 
         tweet_cleaner()
+      } else {
+        df <- data.frame(Message = c("Your search returned no results."))
+      }
   #if no filter, just do standard search
       } else {
-        df <- get_timeline(user_input, n = num_tweets) %>%
-          tweet_cleaner()
+        df <- get_timeline(user_input, n = num_tweets) 
+        if (length(df) > 0) {
+          df <- df %>% 
+            tweet_cleaner()
+        }else {
+          df <- data.frame(message = c("Your search returned no results."))
+        }
       }
   } 
+}
 
 ##----MOST LIKED FUNCTION------------------------------------------------
 #
@@ -118,12 +139,13 @@ most_liked_func <- function(df) {
         janitor::clean_names() %>%
         filter(retweet == "No") %>% 
         filter(like_count == max(like_count)) %>%
+        distinct(tweet, .keep_all = T) %>% 
         select(twitter_user, tweet, like_count) %>%
         rename("Twitter User" = twitter_user,
                "Tweet" = tweet,
                "Like Count" = like_count)
     } else {
-      return("No original tweets with more than 0 likes")
+      df <- data.frame(Message = c("No original tweets with more than 0 likes"))
     }
   )
 }
@@ -141,12 +163,13 @@ renderTable(
       janitor::clean_names() %>%
       filter(retweet == "No") %>% 
       filter(retweet_count == max(retweet_count)) %>%
+      distinct(tweet, .keep_all = T) %>% 
       select(twitter_user, tweet, retweet_count) %>%
       rename("Twitter User" = twitter_user,
              "Tweet" = tweet,
              "Retweet Count" = retweet_count)
   }else {
-    return("No original tweets with more than 0 RTs")
+    df <- data.frame(Message = c("No original tweets with more than 0 RTs"))
   }
 )}
 
@@ -159,21 +182,33 @@ renderTable(
 most_eng_users <- function(df) {
   temp_df <- data.frame()
   renderTable(
-    if(any("No" == df$`Retweet?`)) {
+  #checking that there's at least 1 org tweet and more than 1 twitter user
+    if(any("No" == df$`Retweet?`) & n_distinct(df$`Twitter User`) > 10) {
       temp_df <- df %>%
         janitor::clean_names() %>% 
         filter(retweet == "No") %>% 
         group_by(twitter_user) %>% 
-        mutate(eng_score = as.integer(sum(retweet_count)*2+sum(like_count))) %>% 
+        mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n())) %>% 
         distinct(twitter_user, .keep_all = T) %>% 
-        filter(quantile(test_eng$eng_score, probs = .90) < eng_score) %>% #top 10%
+        subset(eng_score > quantile(eng_score, prob = .90)) %>%  #top 10%
         arrange(desc(eng_score)) %>%
         select(twitter_user, eng_score) %>% 
         head(10) %>% 
-        rename("Twitter User" = twitter_user,
-               "Engagement Score" = eng_score)
+        rename("User" = twitter_user,
+               "Engagement/Tweet" = eng_score)
+    } else if (any("No" == df$`Retweet?`) & n_distinct(df$`Twitter User`) <= 10) {
+      temp_df <- df %>%
+        janitor::clean_names() %>% 
+        filter(retweet == "No") %>% 
+        group_by(twitter_user) %>% 
+        mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n())) %>% 
+        distinct(twitter_user, .keep_all = T) %>% 
+        arrange(desc(eng_score)) %>%
+        select(twitter_user, eng_score) %>% 
+        rename("User" = twitter_user,
+               "Engagement/Tweet" = eng_score)
     } else {
-      return("Search results returned no original tweets")
+      df <- data.frame(Message = c("Search results returned no original tweets"))
     }
   )
 }
@@ -183,11 +218,16 @@ most_eng_users <- function(df) {
 # Description: Check validity of user input
 #____________________________________________________________________________
 
-# input_check <- function(user_input) {
-#   if (is.null(user_input)) {
-#     return()
-#   }
-# }
+input_check <- function(df, user_input) {
+  if (user_input == "") {
+    df <- data.frame(Message = c("Please enter a keyword"))
+  } else if (!is.na(user_input) & !str_detect(user_input, "[:alpha:]")) {
+    df <- data.frame(Message = c("Keyword must contain at least one letter."))
+  } else {
+    
+  }
+}
+
 
 #things to check for are: is null, only punctuation 
 
@@ -210,7 +250,9 @@ ui <- dashboardPage(
   # Sidebar 
   dashboardSidebar( 
     sidebarMenu(
+      id = "tabs",
       menuItem("Keyword Search",
+               tabName = "keyword_menu_item",
                icon = icon("comment-dots"),
                menuSubItem(icon = NULL,
                            numericInput("num_tweets_to_download",
@@ -230,9 +272,12 @@ ui <- dashboardPage(
               menuSubItem(icon = NULL,
                           checkboxInput("org_only", "No retweets?", FALSE)),
                menuSubItem(icon = NULL,
-                           actionButton("keyword_search_button", "Keyword Search"))),
+                           actionButton("keyword_search_button", "Keyword Search")),
+              menuSubItem(icon = icon("info"),
+                          actionButton("show_keywords", "View instructions"))),
       
       menuItem("User(s) Search",
+               tabName = "user_search_menu_item",
                icon = icon("users"),
                menuSubItem(icon = NULL,
                            numericInput("num_tweets_to_download",
@@ -251,9 +296,12 @@ ui <- dashboardPage(
                                      'Filter:',
                                      placeholder = "Enter keywords")),
                menuSubItem(icon = NULL,
-                           actionButton("user_search_button", "User Search"))),
+                           actionButton("user_search_button", "User Search")), 
+               menuSubItem(icon = icon("info"),
+                           actionButton("show_users", "View instructions"))),
       
       menuItem("Electeds Search",
+               tabName = "electeds_search_menu_item",
                icon = icon("landmark"),
                menuSubItem(icon = NULL,
                            numericInput("num_tweets_to_download",
@@ -268,7 +316,8 @@ ui <- dashboardPage(
                            "nyc_electeds",
                            "NYC Electeds", 
                            choices=c("Mayor Adams" = "NYCMayor",
-                                     "CM Hanif"= "CMShahanaHanif"), 
+                                     "CM Hanif"= "CMShahanaHanif",
+                                     "CM Cabán" = "tiffany_caban"), 
                            options = list(`actions-box` = TRUE,
                                           `live-search` = TRUE,
                                           `live-search-placeholder` = "Search name"),
@@ -293,7 +342,11 @@ ui <- dashboardPage(
                                      placeholder = "Enter keywords")),
                
                menuSubItem(icon = NULL,
-                           actionButton("electeds_search", "Elected Search")))
+                           actionButton("electeds_search", "Elected Search")),
+               menuSubItem(icon = icon("info"),
+                           actionButton("show_electeds", "View instructions")))
+      
+
       
     )
   ),
@@ -301,51 +354,81 @@ ui <- dashboardPage(
   # Show results
 
   dashboardBody(
-   
+    shinyjs::useShinyjs(), 
     fluidRow(
+      shinyjs::hidden(div(id = "tweet_wrapper", 
       shinydashboard::box(
         width = 12,
         title = p("Tweet Table", style = 'font-size:24px;'),
         status = "primary",
         div(style = "overflow-x: scroll",
-            DTOutput("tweet_table", width = "100%"))
-        )),
+            DTOutput("tweet_table"))
+        ))
+      )),
+    
+    
     
     fluidRow(
-      column(4,
+      column(2,
+             shinyjs::hidden(div(id = "user_wrapper", 
              shinydashboard::box(
-               width = 10,
+               width = NULL,
                title = "Most 'Popular' Users",
                status = "primary",
                div(style = "overflow-x:scroll",
-                   tableOutput("pop_users"), width = "100%")
-             )),
-      column(4, 
+                   tableOutput("pop_users")),
+               "Weighted average of RT (2x) and favorites (1x) per tweet"
+             ))
+    )),
+    
+   
+    
+      column(5,
+             shinyjs::hidden(div(id = "liked_wrapper", 
              shinydashboard::box(
-               width = 10,
+               width = NULL,
                title = "Most Liked Tweet",
                status = "primary",
                div(style = "overflow-x:scroll",
-                   tableOutput("most_liked"), width = "100%"))
-             ),
-      column(4,
+                   tableOutput("most_liked"))
+             ))
+             )),
+    
+    
+      column(5,
+             shinyjs::hidden(div(id = "rt_wrapper", 
              shinydashboard::box(
-               width = 10,
+               width = NULL,
                title = "Most RT'd Tweet",
                status = "primary",
                div(style = "overflow-x:scroll",
                    tableOutput("most_rt"), width ="100%"))
-             )
-    )
+             ))
+      )),
+    
+
+   
+      shinyjs::hidden(div(id = "help_wrapper", 
+                          shinydashboard::box(
+                            width = 12,
+                            title = p("Help Page", style = 'font-size:24px;'),
+                            status = "primary",
+                            "Some text"
+                         
+                          )
+      ))
    )
 )
+
 
 ##----SERVER LOGIC-----------------------------------------------------------
 #
 # Description: sets up server logic
 #____________________________________________________________________________
 
-server <- function(input, output) {
+server <- function(input, output, session) {
+  
+
   
   #creating a blank reactive val to save the results of the Twitter searches in
   #need a reactive value because this needs to automatically re-execute when user inputs change 
@@ -364,8 +447,17 @@ server <- function(input, output) {
 #____________________________________________________________________________
   
   observeEvent(input$keyword_search_button, {
+    shinyjs::hide("help_wrapper")
     
     user_input <- input$search_terms
+
+    
+    #require user_input to not be empty and have at least one letter
+    validate(
+      need(user_input != "", 'Please enter a keyword'),
+      need(str_detect(user_input, "[:alpha:]"), 'Please enter at least one letter.')
+    )
+    
     
     #checking if the verified check box was selected and returning only verified results if true
     if (input$verified & !input$org_only) {
@@ -403,6 +495,11 @@ server <- function(input, output) {
 
     #adding the results of the search_tweets to the reactive value 
     rv(df)
+    
+    shinyjs::show("tweet_wrapper")
+    shinyjs::show("user_wrapper")
+    shinyjs::show("liked_wrapper")
+    shinyjs::show("rt_wrapper")
   })
   
 
@@ -414,14 +511,27 @@ server <- function(input, output) {
   #get timelines for specific users 
   observeEvent(input$user_search_button, {
     
+    shinyjs::hide("help_wrapper")
+    
     user_input <- input$user_search
     num_tweets <- input$num_tweets_to_download
+    
+    validate(
+      need(user_input != "", 'Please enter a keyword'),
+      need(str_detect(user_input, "[:alpha:]"), 'Please enter at least one letter.')
+    )
+    
+    shinyjs::show("tweet_wrapper")
+    shinyjs::show("user_wrapper")
+    shinyjs::show("liked_wrapper")
+    shinyjs::show("rt_wrapper")
     
     #blank vars
     filter_flag <- FALSE
     filter_input <- ""
     df <- data.frame()
     
+    #testing if there's multiple chars 
     if(str_detect(user_input, "[:space:]")) {
       user_input <- unlist(str_split(user_input, "[:space:]"))
     } else {
@@ -429,7 +539,7 @@ server <- function(input, output) {
     }
     
     # testing if there is a filter
-    if (length(input$filter_users) > 0) {
+    if (input$filter_users != "") {
       filter_flag <- TRUE
       filter_input <- input$filter_users
     } else {
@@ -437,6 +547,9 @@ server <- function(input, output) {
     
     #filter function
     df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
+    
+    #users with highest engagement
+    output$pop_users <- most_eng_users(df)
     
     #most liked tweet
     output$most_liked <- most_liked_func(df)
@@ -457,6 +570,8 @@ server <- function(input, output) {
   
   #get timeline search for electeds
   observeEvent(input$electeds_search, {
+    
+    shinyjs::hide("help_wrapper")
    
     num_tweets <- input$num_tweets_to_download
     
@@ -467,7 +582,9 @@ server <- function(input, output) {
     df <- data.frame()
     
     #testing whether nys electeds and/or nyc electeds are selected 
-    if (length(input$nys_electeds)>0 & length(input$nyc_electeds) == 0) {
+    if (length(input$nys_electeds)==0 & length(input$nyc_electeds) == 0) {
+      shiny::validate("Please enter an input.")
+    }else if (length(input$nys_electeds)>0 & length(input$nyc_electeds) == 0) {
       user_input <- input$nys_electeds
     } else if(length(input$nys_electeds)==0 & length(input$nyc_electeds) > 0) {
       user_input <- input$nyc_electeds
@@ -481,8 +598,10 @@ server <- function(input, output) {
       user_input
     }
     
+
+    
     # testing if there is a filter
-    if (length(input$filter_electeds) > 0) {
+    if (input$filter_electeds != "") {
       filter_flag <- TRUE
       filter_input <- input$filter_electeds
     } else {
@@ -490,6 +609,9 @@ server <- function(input, output) {
     
     #filter function
     df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
+    
+    #users with highest engagement
+    output$pop_users <- most_eng_users(df)
     
     #most liked tweet
     output$most_liked <- most_liked_func(df)
@@ -499,6 +621,11 @@ server <- function(input, output) {
     
     #adding the results of the search_tweets to the reactive value
     rv(df)
+    
+    shinyjs::show("tweet_wrapper")
+    shinyjs::show("user_wrapper")
+    shinyjs::show("liked_wrapper")
+    shinyjs::show("rt_wrapper")
     
   })
   
@@ -554,6 +681,76 @@ server <- function(input, output) {
                                      })
   
 
+
+
+##----HELP PAGE--------------------------------------------------------------
+#
+# Description: sets up help page
+#____________________________________________________________________________
+
+  observeEvent(input$show_keywords, {
+    showModal(modalDialog(
+      title = "Keywords Search Instructions",
+      div(tags$b("Number of Tweets to Download")), 
+      div("Minimum number of tweets returned is 100. The maximum is 18,000. The number of tweets is incremented by 100."),
+      br(),
+      div(tags$b("Keywords Search")), 
+      div("Must be a character string not to exceed maximum of 500 characters."),
+      div('To search for tweets containing at least one of multiple possible terms, 
+          separate each search term with spaces and "OR" (in caps). For example, the search q = "data science" 
+          looks for tweets containing both "data" and "science" located anywhere in the tweets and in any order.'),
+      div('When "OR" is entered between search terms, query = "data OR science", 
+      Twitter should return any tweet that contains either "data" or "science."'),
+      div('It is also possible to search for exact phrases using double quotes. 
+      To do this, wrap double quotes around the query, such as "housing new york".'),
+      br(),
+      div(tags$b("Verified Accounts?")), 
+      div('Checking this box will automatically filter the returned search results to 
+      only include verified accounts. The number of tweets displayed will likely be less than the 
+      "number of tweets to download" as a result'),
+      br(),
+      div(tags$b("No Retweets?")), 
+      div('Checking this box will exclude any tweets that are replies. 
+      The number of tweets displayed will likely be equal to the "number of tweets to download".'),
+      easyClose = TRUE,
+      footer = NULL
+    ))
+  })
+
+  observeEvent(input$show_users, {
+    showModal(modalDialog(
+      title = "Users Search Instructions",
+      div(tags$b("Number of Tweets to Download")), 
+      div("Minimum number of tweets returned is 100. The maximum is 18,000. The number of tweets is incremented by 100."),
+      br(),
+      div(tags$b("Users Search")), 
+      div("Enter spaces between each screen name if searching for more than one user at once. 
+      The number of tweets to download will return that number of tweets per user. 
+      For example, if searching NYCMayor and NYCHousing and selecting 100 tweets to download will yield 200 tweets."),
+      br(),
+      div(tags$b("Filter")), 
+      div("Entering keywords here will filter the user search to only results that include the keywords."),
+      easyClose = TRUE,
+      footer = NULL
+    ))
+  })
+  
+  observeEvent(input$show_electeds, {
+    showModal(modalDialog(
+      title = "Electeds Search Instructions",
+      div(tags$b("Number of Tweets to Download")), 
+      div("Minimum number of tweets returned is 100. The maximum is 18,000. The number of tweets is incremented by 100."),
+      br(),
+      div(tags$b("Electeds Search")), 
+      div("Select or search for any elected official's name. Selection boxes can be used together or separately."),
+      br(),
+      div(tags$b("Filter")), 
+      div("Entering keywords here will filter the user search to only results that include the keywords."),
+      easyClose = TRUE,
+      footer = NULL
+    ))
+  })
+  
 }
 
 # Run the application 
