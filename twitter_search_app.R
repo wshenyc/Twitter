@@ -133,13 +133,16 @@ filter_func <- function(df, filter_flag, filter_input, user_input, num_tweets) {
 
 #most liked tweet
 most_liked_func <- function(df) {
-  renderTable(
-    if(max(df$`Like Count`) > 0 & any("No" == df$`Retweet?`)) {
-      df %>%
-        janitor::clean_names() %>%
-        filter(retweet == "No") %>% 
+  
+    df <- df %>% 
+      janitor::clean_names() %>% 
+      filter(retweet == "No") %>%
+      filter(like_count > 0)
+    
+    if (nrow(df) != 0) {
+      df <- df %>% 
         filter(like_count == max(like_count)) %>%
-        distinct(tweet, .keep_all = T) %>% 
+        distinct(tweet, .keep_all = T) %>%
         select(twitter_user, tweet, like_count) %>%
         rename("Twitter User" = twitter_user,
                "Tweet" = tweet,
@@ -147,8 +150,9 @@ most_liked_func <- function(df) {
     } else {
       df <- data.frame(Message = c("No original tweets with more than 0 likes"))
     }
-  )
+  renderTable(df)
 }
+    
 
 ##----MOST RETWEETED FUNCTION------------------------------------------------
 #
@@ -157,21 +161,24 @@ most_liked_func <- function(df) {
 
 #most retweeted tweet
 most_rt_func <- function(df) {
-renderTable(
-  if(max(df$`Retweet Count`) > 0 & any("No" == df$`Retweet?`)) {
-    df %>%
-      janitor::clean_names() %>%
-      filter(retweet == "No") %>% 
+  df <- df %>% 
+    janitor::clean_names() %>% 
+    filter(retweet == "No") %>%
+    filter(retweet_count > 0)
+  
+  if (nrow(df) != 0) {
+    df <- df %>%
       filter(retweet_count == max(retweet_count)) %>%
-      distinct(tweet, .keep_all = T) %>% 
+      distinct(tweet, .keep_all = T) %>%
       select(twitter_user, tweet, retweet_count) %>%
       rename("Twitter User" = twitter_user,
              "Tweet" = tweet,
-             "Retweet Count" = retweet_count)
-  }else {
-    df <- data.frame(Message = c("No original tweets with more than 0 RTs"))
+             "RT Count" = retweet_count)
+  } else {
+    df <- data.frame(Message = c("No original tweets with more than 0 RT's"))
   }
-)}
+  renderTable(df)
+}
 
 ##----MOST ENGAGEMENT -------------------------------------------------------
 #
@@ -180,59 +187,104 @@ renderTable(
 #____________________________________________________________________________
 
 most_eng_users <- function(df) {
-  temp_df <- data.frame()
-  renderTable(
-  #checking that there's at least 1 org tweet and more than 1 twitter user
-    if(any("No" == df$`Retweet?`) & n_distinct(df$`Twitter User`) > 10) {
-      temp_df <- df %>%
-        janitor::clean_names() %>% 
-        filter(retweet == "No") %>% 
-        group_by(twitter_user) %>% 
-        mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n())) %>% 
-        distinct(twitter_user, .keep_all = T) %>% 
-        subset(eng_score > quantile(eng_score, prob = .90)) %>%  #top 10%
-        arrange(desc(eng_score)) %>%
-        select(twitter_user, eng_score) %>% 
-        head(10) %>% 
-        rename("User" = twitter_user,
-               "Engagement/Tweet" = eng_score)
-    } else if (any("No" == df$`Retweet?`) & n_distinct(df$`Twitter User`) <= 10) {
-      temp_df <- df %>%
-        janitor::clean_names() %>% 
-        filter(retweet == "No") %>% 
-        group_by(twitter_user) %>% 
-        mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n())) %>% 
-        distinct(twitter_user, .keep_all = T) %>% 
-        arrange(desc(eng_score)) %>%
-        select(twitter_user, eng_score) %>% 
-        rename("User" = twitter_user,
-               "Engagement/Tweet" = eng_score)
-    } else {
-      df <- data.frame(Message = c("Search results returned no original tweets"))
-    }
-  )
-}
-
-##----USER INPUT CHECK-------------------------------------------------------
-#
-# Description: Check validity of user input
-#____________________________________________________________________________
-
-input_check <- function(df, user_input) {
-  if (user_input == "") {
-    df <- data.frame(Message = c("Please enter a keyword"))
-  } else if (!is.na(user_input) & !str_detect(user_input, "[:alpha:]")) {
-    df <- data.frame(Message = c("Keyword must contain at least one letter."))
-  } else {
+  
+#   df <- df %>% 
+#     janitor::clean_names() %>% 
+#     filter(retweet == "No") 
+#   
+#   if(nrow(df) != 0 & n_distinct(df$twitter_user) > 0) {
+#     temp_df <- df %>% 
+#       group_by(twitter_user) %>%
+#       mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n())) %>% 
+#       filter(eng_score > 0)
+#     if (nrow(temp_df) == 0) {
+#       temp_df <- data.frame(Message = c("Search returned no users with engagement scores greater than zero."))
+#    } else {
+#      temp_df <- df %>%  
+#        distinct(twitter_user, .keep_all = T) %>%
+#        subset(eng_score > quantile(eng_score, prob = .90)) %>%  #top 10%
+#        arrange(desc(eng_score)) %>%
+#        select(twitter_user, eng_score) %>%
+#        head(10) %>%
+#        rename("User" = twitter_user,
+#               "Engagement/Tweet" = eng_score) 
+#      print("test1")
+#    } 
+#   } else {
+#     temp_df <- data.frame(Message = c("Search results returned no original tweets."))
+#   }
+#   renderTable(temp_df)
+# }
+#       
+  
     
+  
+    
+    
+    
+    
+    #   if (sum(temp_df$eng_score) == 0) {
+    #     temp_df <- data.frame(Message = c("Search results returned no original tweets"))
+    #     print("test3")
+    #   } else {
+    #    temp_df <- df %>%  
+    #       distinct(twitter_user, .keep_all = T) %>%
+    #       subset(eng_score > quantile(eng_score, prob = .90)) %>%  #top 10%
+    #       arrange(desc(eng_score)) %>%
+    #       filter(eng_score > 0) %>% 
+    #       select(twitter_user, eng_score) %>%
+    #       head(10) %>%
+    #       rename("User" = twitter_user,
+    #              "Engagement/Tweet" = eng_score) 
+    #    print("test1")
+    #   }
+    # } else if (nrow(df) != 0 & n_distinct(df$twitter_user) == 1) {
+    #   temp_df <- df %>%
+    #     mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n())) %>%
+    #     distinct(twitter_user, .keep_all = T) %>%
+    #     select(twitter_user, eng_score) %>%
+    #     rename("User" = twitter_user,
+    #            "Engagement/Tweet" = eng_score)
+    #   print("test2")
+    #   } else {
+    #     temp_df <- data.frame(Message = c("Search results returned no original tweets"))
+    #     print("test3")
+    #   }
+  
+#   renderTable(temp_df)
+# }
+  
+temp_df <- data.frame()
+
+df <- df %>% 
+  janitor::clean_names() %>%
+  filter(retweet == "No")
+
+  if(nrow(df) != 0 & n_distinct(df$twitter_user) > 10) {
+    temp_df <- df %>%
+      group_by(twitter_user) %>%
+      mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n())) %>%
+      distinct(twitter_user, .keep_all = T) %>%
+      subset(eng_score > quantile(eng_score, prob = .90)) %>%  #top 10%
+      arrange(desc(eng_score)) %>%
+      select(twitter_user, eng_score) %>%
+      head(10) %>%
+      rename("User" = twitter_user,
+             "Engagement/Tweet" = eng_score)
+  } else if (nrow(df) != 0 & n_distinct(df$twitter_user) <= 10) {
+    temp_df <- df %>%
+      group_by(twitter_user) %>%
+      mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n())) %>%
+      distinct(twitter_user, .keep_all = T) %>%
+      arrange(desc(eng_score)) %>%
+      select(twitter_user, eng_score) %>%
+      rename("User" = twitter_user,
+             "Engagement/Tweet" = eng_score)
+  } else {
+    temp_df <- data.frame(Message = c("Search results returned no original tweets"))
   }
+renderTable(temp_df)
 }
-
-
-#things to check for are: is null, only punctuation 
-
-###also need to check for if what a user enters returns an empty table
-###to tell them that! 
 
 ##----USER INTERFACE----------------------------------------------------------
 #
@@ -240,12 +292,31 @@ input_check <- function(df, user_input) {
 #____________________________________________________________________________
 
 
+
+electeds <- readxl::read_excel("R:/POLICY-STRATEGY-HOUSING POLICY/Data Projects/Twitter Project for IGA/NYC Electeds 2022.xlsx") %>% 
+  arrange(Elected) %>% 
+  na.omit(Handle)
+
+nyc_electeds <- electeds %>% 
+  filter(Type == "nyccouncil") 
+
+nysa_electeds <- electeds %>% 
+  filter(Type == "nycassembly")
+
+nyssen_electeds <- electeds %>% 
+  filter(Type == "nycsenate")
+
+choices_nyc_electeds <- setNames(nyc_electeds$Handle, nyc_electeds$Elected)
+
+choices_nysa_electeds <- setNames(nysa_electeds$Handle, nysa_electeds$Elected)
+
+choices_nyss_electeds <- setNames(nyssen_electeds$Handle, nyssen_electeds$Elected)
+
 ui <- dashboardPage(
   
   # Application title
   dashboardHeader(
-    title = span("Twitter Search",
-                 style = "font: Avenir;")),
+    title = "Twitter Search"),
   
   # Sidebar 
   dashboardSidebar( 
@@ -315,26 +386,37 @@ ui <- dashboardPage(
                            shinyWidgets::pickerInput(
                            "nyc_electeds",
                            "NYC Electeds", 
-                           choices=c("Mayor Adams" = "NYCMayor",
-                                     "CM Hanif"= "CMShahanaHanif",
-                                     "CM Cabán" = "tiffany_caban"), 
+                           choices = choices_nyc_electeds,
                            options = list(`actions-box` = TRUE,
                                           `live-search` = TRUE,
-                                          `live-search-placeholder` = "Search name"),
+                                          `live-search-placeholder` = "Search name",
+                                          `size` = 10),
                            multiple = T)),
                
                
                menuSubItem(icon = NULL,
                            shinyWidgets::pickerInput(
-                             "nys_electeds",
-                             "NYS Electeds", 
-                             choices=c("AM Niou" = "yuhline",
-                                       "Sen Kavanagh" = "BrianKavanaghNY",
-                                       "Sen Zellnor" = "zellnor4ny"),
+                             "nysa_electeds",
+                             "NYS Assemblymembers", 
+                             choices= choices_nysa_electeds,
                              options = list(`actions-box` = TRUE,
                                             `live-search` = TRUE,
-                                            `live-search-placeholder` = "Search name"),
+                                            `live-search-placeholder` = "Search name",
+                                            `size` = 10),
                              multiple = T)),
+               
+               menuSubItem(icon = NULL,
+                           shinyWidgets::pickerInput(
+                             "nyss_electeds",
+                             "NYS Senators", 
+                             choices= choices_nyss_electeds,
+                             options = list(`actions-box` = TRUE,
+                                            `live-search` = TRUE,
+                                            `dropup-auto` = F,
+                                            `live-search-placeholder` = "Search name",
+                                            `size` = 10),
+                             multiple = T,
+                             )),
                
                menuSubItem(icon = NULL,
                            textInput('filter_electeds',
@@ -369,7 +451,7 @@ ui <- dashboardPage(
     
     
     fluidRow(
-      column(2,
+      column(3,
              shinyjs::hidden(div(id = "user_wrapper", 
              shinydashboard::box(
                width = NULL,
@@ -395,7 +477,7 @@ ui <- dashboardPage(
              )),
     
     
-      column(5,
+      column(4,
              shinyjs::hidden(div(id = "rt_wrapper", 
              shinydashboard::box(
                width = NULL,
@@ -404,18 +486,6 @@ ui <- dashboardPage(
                div(style = "overflow-x:scroll",
                    tableOutput("most_rt"), width ="100%"))
              ))
-      )),
-    
-
-   
-      shinyjs::hidden(div(id = "help_wrapper", 
-                          shinydashboard::box(
-                            width = 12,
-                            title = p("Help Page", style = 'font-size:24px;'),
-                            status = "primary",
-                            "Some text"
-                         
-                          )
       ))
    )
 )
@@ -447,7 +517,6 @@ server <- function(input, output, session) {
 #____________________________________________________________________________
   
   observeEvent(input$keyword_search_button, {
-    shinyjs::hide("help_wrapper")
     
     user_input <- input$search_terms
 
@@ -458,6 +527,7 @@ server <- function(input, output, session) {
       need(str_detect(user_input, "[:alpha:]"), 'Please enter at least one letter.')
     )
     
+    # print(user_input)
     
     #checking if the verified check box was selected and returning only verified results if true
     if (input$verified & !input$org_only) {
@@ -475,8 +545,16 @@ server <- function(input, output, session) {
     
    
     #setting df variable to the results of search_tweets
-    df <- search_tweets(user_input, n = input$num_tweets_to_download) %>% 
-      tweet_cleaner() #calling custom function 
+    df <- search_tweets(user_input, n = input$num_tweets_to_download) 
+    
+    if(length(df) > 1) {
+      df <- df %>% 
+        tweet_cleaner() #calling custom function 
+    } else {
+      df <- data.frame(Message = c("Search returned no results."))
+    }
+    
+    
   
 ##----SUMMARY TABLES---------------------------------------------------------
 #
@@ -581,24 +659,49 @@ server <- function(input, output, session) {
     filter_flag <- FALSE
     df <- data.frame()
     
+    
     #testing whether nys electeds and/or nyc electeds are selected 
-    if (length(input$nys_electeds)==0 & length(input$nyc_electeds) == 0) {
+    
+    #if no inputs selected
+    if (length(input$nyc_electeds) == 0 & length(input$nysa_electeds) == 0 & length(input$nyss_electeds) == 0) {
       shiny::validate("Please enter an input.")
-    }else if (length(input$nys_electeds)>0 & length(input$nyc_electeds) == 0) {
-      user_input <- input$nys_electeds
-    } else if(length(input$nys_electeds)==0 & length(input$nyc_electeds) > 0) {
+    
+      #if just nyc councilmember selected
+    } else if (length(input$nyc_electeds) > 0 & length(input$nysa_electeds) == 0 & length(input$nyss_electeds) == 0) {
       user_input <- input$nyc_electeds
-    } else if (length(input$nys_electeds)>0 & length(input$nyc_electeds) > 0) {
+      
+      #if just nysa selected
+    } else if (length(input$nyc_electeds) == 0 & length(input$nysa_electeds) > 0 & length(input$nyss_electeds) == 0) {
+      user_input <- input$nysa_electeds
+      
+      #if just nys sen selected
+    } else if (length(input$nyc_electeds) == 0 & length(input$nysa_electeds) == 0 & length(input$nyss_electeds) > 0) {
+      user_input <- input$nyss_electeds 
+      
+      #if nycc and nysa selected 
+    } else if (length(input$nyc_electeds) > 0 & length(input$nysa_electeds) > 0 & length(input$nyss_electeds) == 0) {
       #this line of code is pasting the selected nys and nyc electeds together
       #then it is splitting those into separate strings based on whitespace
       #finally it is converting the list into a vector
       #so that the get_timeline() function works
-      user_input <- unlist(str_split(paste(input$nys_electeds, input$nyc_electeds), "[:space:]"))
+      user_input <- unlist(str_split(paste(input$nyc_electeds, input$nysa_electeds), "[:space:]"))
+      
+      #if nycc and nys sen selected 
+    } else if (length(input$nyc_electeds) > 0 & length(input$nysa_electeds) == 0 & length(input$nyss_electeds) > 0) {
+      user_input <- unlist(str_split(paste(input$nyc_electeds, input$nyss_electeds), "[:space:]"))
+      
+      #if nysa and nyss selected 
+    } else if (length(input$nyc_electeds) == 0 & length(input$nysa_electeds) > 0 & length(input$nyss_electeds) > 0) {
+      user_input <- unlist(str_split(paste(input$nysa_electeds, input$nyss_electeds), "[:space:]"))
+      
+      #if all three, nycc, nysa and nyssen selected 
+    } else if (length(input$nyc_electeds) > 0 & length(input$nysa_electeds) > 0 & length(input$nyss_electeds) > 0) {
+      user_input <- unlist(str_split(paste(input$nyc_electeds, input$nysa_electeds, input$nyss_electeds), "[:space:]"))
+      
     } else {
       user_input
     }
-    
-
+ 
     
     # testing if there is a filter
     if (input$filter_electeds != "") {
