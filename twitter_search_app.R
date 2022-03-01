@@ -189,101 +189,67 @@ most_rt_func <- function(df) {
 
 most_eng_users <- function(df) {
   
-#   df <- df %>% 
-#     janitor::clean_names() %>% 
-#     filter(retweet == "No") 
-#   
-#   if(nrow(df) != 0 & n_distinct(df$twitter_user) > 0) {
-#     temp_df <- df %>% 
-#       group_by(twitter_user) %>%
-#       mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n())) %>% 
-#       filter(eng_score > 0)
-#     if (nrow(temp_df) == 0) {
-#       temp_df <- data.frame(Message = c("Search returned no users with engagement scores greater than zero."))
-#    } else {
-#      temp_df <- df %>%  
-#        distinct(twitter_user, .keep_all = T) %>%
-#        subset(eng_score > quantile(eng_score, prob = .90)) %>%  #top 10%
-#        arrange(desc(eng_score)) %>%
-#        select(twitter_user, eng_score) %>%
-#        head(10) %>%
-#        rename("User" = twitter_user,
-#               "Engagement/Tweet" = eng_score) 
-#      print("test1")
-#    } 
-#   } else {
-#     temp_df <- data.frame(Message = c("Search results returned no original tweets."))
-#   }
-#   renderTable(temp_df)
-# }
-#       
+  #creating temp df
+  temp_df <- data.frame()
   
-    
+  #filtering out retweets
+  df <- df %>% 
+    janitor::clean_names() %>%
+    filter(retweet == "No")
   
-    
-    
-    
-    
-    #   if (sum(temp_df$eng_score) == 0) {
-    #     temp_df <- data.frame(Message = c("Search results returned no original tweets"))
-    #     print("test3")
-    #   } else {
-    #    temp_df <- df %>%  
-    #       distinct(twitter_user, .keep_all = T) %>%
-    #       subset(eng_score > quantile(eng_score, prob = .90)) %>%  #top 10%
-    #       arrange(desc(eng_score)) %>%
-    #       filter(eng_score > 0) %>% 
-    #       select(twitter_user, eng_score) %>%
-    #       head(10) %>%
-    #       rename("User" = twitter_user,
-    #              "Engagement/Tweet" = eng_score) 
-    #    print("test1")
-    #   }
-    # } else if (nrow(df) != 0 & n_distinct(df$twitter_user) == 1) {
-    #   temp_df <- df %>%
-    #     mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n())) %>%
-    #     distinct(twitter_user, .keep_all = T) %>%
-    #     select(twitter_user, eng_score) %>%
-    #     rename("User" = twitter_user,
-    #            "Engagement/Tweet" = eng_score)
-    #   print("test2")
-    #   } else {
-    #     temp_df <- data.frame(Message = c("Search results returned no original tweets"))
-    #     print("test3")
-    #   }
-  
-#   renderTable(temp_df)
-# }
-  
-temp_df <- data.frame()
-
-df <- df %>% 
-  janitor::clean_names() %>%
-  filter(retweet == "No")
-
+  #case 1: if resulting df has at least 1 row and more than 10 unique twitter users
+  #then create an engagement score column 
   if(nrow(df) != 0 & n_distinct(df$twitter_user) > 10) {
     temp_df <- df %>%
       group_by(twitter_user) %>%
-      mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n())) %>%
-      distinct(twitter_user, .keep_all = T) %>%
-      subset(eng_score > quantile(eng_score, prob = .90)) %>%  #top 10%
-      arrange(desc(eng_score)) %>%
-      select(twitter_user, eng_score) %>%
-      head(10) %>%
-      rename("User" = twitter_user,
-             "Engagement/Tweet" = eng_score)
+      mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n()))
+    
+    # case 1a: if the engagement score total isn't 0, meaning at least one user has a
+    #non-zero engagement zero, move forward with returning the top 10% users
+    #capping the returned df to 10 unique users 
+    if(sum(temp_df$eng_score) > 0) {
+      temp_df <- temp_df %>% 
+        distinct(twitter_user, .keep_all = T) %>%
+        subset(eng_score > quantile(eng_score, prob = .90)) %>%  #top 10%
+        arrange(desc(eng_score)) %>%
+        select(twitter_user, eng_score) %>%
+        head(10) %>%
+        rename("User" = twitter_user,
+               "Engagement/Tweet" = eng_score)
+      
+      #case 1b: if the engagement score total is zero, inform user 
+    } else {
+      temp_df <- data.frame(Message = c("Search returned no users with engagement scores higher than zero."))
+    }
+    
+    #case 2: if resulting df has at least 1 row and less than or equal to 10 unique
+    #users, generate engagement score column 
   } else if (nrow(df) != 0 & n_distinct(df$twitter_user) <= 10) {
     temp_df <- df %>%
       group_by(twitter_user) %>%
-      mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n())) %>%
-      distinct(twitter_user, .keep_all = T) %>%
-      arrange(desc(eng_score)) %>%
-      select(twitter_user, eng_score) %>%
-      rename("User" = twitter_user,
-             "Engagement/Tweet" = eng_score)
+      mutate(eng_score = as.integer((sum(retweet_count)*2+sum(like_count)) / n()))
+    
+    #case 2a: check engagement score total is greater than 0
+    #keeping all users' engagement scores to be displayed in descending order 
+    if (sum(temp_df$eng_score) >0) {
+      temp_df <- temp_df %>% 
+        distinct(twitter_user, .keep_all = T) %>%
+        arrange(desc(eng_score)) %>%
+        select(twitter_user, eng_score) %>%
+        rename("User" = twitter_user,
+               "Engagement/Tweet" = eng_score)
+      
+      #case 2b: if engagement score total is zero, inform user 
+    } else {
+      temp_df <- data.frame(Message = c("Search returned no users with engagement scores higher than zero."))
+    }
+    
+    #case 3: if resulting df has no rows, inform user all returned tweets were RTs
   } else {
     temp_df <- data.frame(Message = c("Search results returned no original tweets"))
   }
+  
+  #finally render results to UI 
 renderTable(temp_df)
 }
 
@@ -294,7 +260,7 @@ renderTable(temp_df)
 
 customLogo <- shinyDashboardLogoDIY(
   boldText = "Twitter"
-  ,mainText = "Advanced Search"
+  ,mainText = "Search"
   ,textSize = 20
   ,badgeText = "v1.1"
   ,badgeTextColor = "white"
@@ -443,16 +409,20 @@ choices_nyss_electeds <- setNames(nyssen_electeds$Handle, nyssen_electeds$Electe
 #____________________________________________________________________________
 
 
-ui <- dashboardPage(
+ui <- 
+  tagList(
+  dashboardPage(
   
   # Application title
   dashboardHeader(
     title = customLogo),
-  
+
   # Sidebar 
   dashboardSidebar( 
     sidebarMenu(
       id = "tabs",
+      
+
       menuItem("Keyword Search",
                tabName = "keyword_menu_item",
                icon = icon("comment-dots"),
@@ -571,6 +541,7 @@ ui <- dashboardPage(
     customTheme,
     
     shinyjs::useShinyjs(), 
+    
     fluidRow(
       shinyjs::hidden(div(id = "tweet_wrapper", 
       shinydashboard::box(
@@ -580,10 +551,11 @@ ui <- dashboardPage(
         div(style = "overflow-x: scroll",
             DTOutput("tweet_table"))
         ))
-      )),
+      ))
+    ,
     
     
-    
+
     fluidRow(
       column(3,
              shinyjs::hidden(div(id = "user_wrapper", 
@@ -595,7 +567,8 @@ ui <- dashboardPage(
                    tableOutput("pop_users")),
                "Weighted average of RT (2x) and favorites (1x) per tweet"
              ))
-    )),
+    ))
+    ,
     
    
     
@@ -621,8 +594,27 @@ ui <- dashboardPage(
                    tableOutput("most_rt"), width ="100%"))
              ))
       ))
-   )
+   )),
+
+
+
+tags$footer(img(src="https://housingconnect.nyc.gov/PublicWeb/assets/images/hpd-logo@2x.png", height = "53px"), 
+align = "right", style = "
+              position:relative;
+              # font-family: Verdana;
+              bottom:0;
+              width:100%;
+              height:70px;   /* Height of the footer */
+              color: white; #font color
+              #padding: 10px;
+              padding-right: 20px;
+              padding-top: 10px;
+              background-color: #333;
+              #z-index: 1000;
+            ") #this will move the footer to be on top of the sidebar
+
 )
+
 
 
 ##----SERVER LOGIC-----------------------------------------------------------
@@ -632,7 +624,28 @@ ui <- dashboardPage(
 
 server <- function(input, output, session) {
   
-
+  # the modal dialog upon start up
+  query_modal <- modalDialog(
+    title = "Introduction",
+    div(tags$b("General overview")), 
+    br(),
+    div("Twitter Search is an app that allows users to:"),
+    div(tags$ul(
+          tags$li("Search most recent Tweets containing specified key words from the last 6-9 days."), 
+          tags$li("Return timelines for specified Twitter users"), 
+          tags$li("Filter timeline results by specified key words")
+        )),
+    br(),
+    div("To start, select one of the tabs on the left."),
+    br(),
+    easyClose = T,
+    footer = modalButton("Close")
+    )
+  
+  
+  # Show the model on start up ...
+  showModal(query_modal)
+  
   
   #creating a blank reactive val to save the results of the Twitter searches in
   #need a reactive value because this needs to automatically re-execute when user inputs change 
@@ -906,7 +919,7 @@ server <- function(input, output, session) {
                                            incProgress(1/n, detail = paste(i*10, "%", sep = ""))
                                            
                                            # Pause for 0.05 seconds to simulate a long computation.
-                                           Sys.sleep(0.05)
+                                           Sys.sleep(0.1)
                                          }
                                          
                                        })
@@ -920,7 +933,7 @@ server <- function(input, output, session) {
 
 
 
-##----HELP PAGE--------------------------------------------------------------
+##----INSTRUCTIONS MODALS----------------------------------------------------
 #
 # Description: sets up help page
 #____________________________________________________________________________
@@ -933,11 +946,14 @@ server <- function(input, output, session) {
       br(),
       div(tags$b("Keywords Search")), 
       div("Must be a character string not to exceed maximum of 500 characters."),
+      br(),
       div('To search for tweets containing at least one of multiple possible terms, 
           separate each search term with spaces and "OR" (in caps). For example, the search q = "data science" 
           looks for tweets containing both "data" and "science" located anywhere in the tweets and in any order.'),
+      br(),
       div('When "OR" is entered between search terms, query = "data OR science", 
       Twitter should return any tweet that contains either "data" or "science."'),
+      br(),
       div('It is also possible to search for exact phrases using double quotes. 
       To do this, wrap double quotes around the query, such as "housing new york".'),
       br(),
