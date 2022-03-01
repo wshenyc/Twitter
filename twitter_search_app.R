@@ -2,7 +2,7 @@ library(shiny)
 library(rtweet)
 library(tidyverse)
 library(DT)
-library(httr)
+library(gfonts)
 library(glue)
 library(lubridate)
 library(shinydashboard)
@@ -278,7 +278,7 @@ customLogo <- shinyDashboardLogoDIY(
 customTheme <- dashboardthemes::shinyDashboardThemeDIY(
   
   #general
-  appFontFamily = "Verdana"
+  appFontFamily = 'Verdana'
   ,appFontColor = "rgb(0,0,0)"
   ,primaryFontColor = "rgb(0,0,0)"
   ,infoFontColor = "rgb(0,0,0)"
@@ -403,7 +403,14 @@ choices_nysa_electeds <- setNames(nysa_electeds$Handle, nysa_electeds$Elected)
 
 choices_nyss_electeds <- setNames(nyssen_electeds$Handle, nyssen_electeds$Elected)
 
-##----USER INTERFACE----------------------------------------------------------
+##----FONTS------------------------------------------------------------------
+#
+# Description: sets up fonts
+#____________________________________________________________________________
+
+use_pkg_gfont(font = "roboto", selector = "body")
+
+##----USER INTERFACE---------------------------------------------------------
 #
 # Description: sets up UI
 #____________________________________________________________________________
@@ -412,6 +419,8 @@ choices_nyss_electeds <- setNames(nyssen_electeds$Handle, nyssen_electeds$Electe
 ui <- 
   tagList(
   dashboardPage(
+    
+    
   
   # Application title
   dashboardHeader(
@@ -598,17 +607,18 @@ ui <-
 
 
 
-tags$footer(img(src="https://housingconnect.nyc.gov/PublicWeb/assets/images/hpd-logo@2x.png", height = "53px"), 
+tags$footer(img(src="https://housingconnect.nyc.gov/PublicWeb/assets/images/hpd-logo@2x.png", height = "55px"), 
+            img(src="https://www.fedex.com/content/dam/fedex/us-united-states/services/Gradient%20Delivery%20Icon-1.png", height = "75px"),
 align = "right", style = "
               position:relative;
-              # font-family: Verdana;
               bottom:0;
               width:100%;
-              height:70px;   /* Height of the footer */
+              height:85px;   /* Height of the footer */
               color: white; #font color
               #padding: 10px;
               padding-right: 20px;
-              padding-top: 10px;
+              padding-left: 20px;
+              padding-top: 5px;
               background-color: #333;
               #z-index: 1000;
             ") #this will move the footer to be on top of the sidebar
