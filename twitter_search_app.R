@@ -6,6 +6,7 @@ library(httr)
 library(glue)
 library(lubridate)
 library(shinydashboard)
+library(dashboardthemes)
 
 ##----TWITTER AUTHORIZATION TOKEN--------------------------------------------
 #
@@ -286,11 +287,135 @@ df <- df %>%
 renderTable(temp_df)
 }
 
-##----USER INTERFACE----------------------------------------------------------
+##----CUSTOM LOGO-----------------------------------------------------------
 #
-# Description: sets up UI
+# Description: Creates custom logo
 #____________________________________________________________________________
 
+customLogo <- shinyDashboardLogoDIY(
+  boldText = "Twitter"
+  ,mainText = "Advanced Search"
+  ,textSize = 20
+  ,badgeText = "v1.1"
+  ,badgeTextColor = "white"
+  ,badgeTextSize = 2
+  ,badgeBackColor = "#88bed1"
+  ,badgeBorderRadius = 3
+)
+
+##----CUSTOM THEME-----------------------------------------------------------
+#
+# Description: Creates custom theme
+#____________________________________________________________________________
+
+
+customTheme <- dashboardthemes::shinyDashboardThemeDIY(
+  
+  #general
+  appFontFamily = "Verdana"
+  ,appFontColor = "rgb(0,0,0)"
+  ,primaryFontColor = "rgb(0,0,0)"
+  ,infoFontColor = "rgb(0,0,0)"
+  ,successFontColor = "rgb(0,0,0)"
+  ,warningFontColor = "rgb(0,0,0)"
+  ,dangerFontColor = "rgb(0,0,0)"
+  ,bodyBackColor = "rgb(248,248,248)"
+  
+  #header
+  ,logoBackColor = "rgba(19,156,202,255)"
+  
+  ,headerButtonBackColor = "rgba(19,156,202,255)"
+  ,headerButtonIconColor = "rgb(75,75,75)"
+  ,headerButtonBackColorHover = "rgba(18, 140, 183, 1)"
+  ,headerButtonIconColorHover = "rgb(0,0,0)"
+  
+  ,headerBackColor = "rgba(19,156,202,255)"
+  ,headerBoxShadowColor = "#aaaaaa"
+  ,headerBoxShadowSize = "2px 2px 2px"
+
+  ### sidebar
+  ,sidebarBackColor = "rgb(232, 232, 232, 1)"
+  ,sidebarPadding = 0
+  
+  ,sidebarMenuBackColor = "transparent"
+  ,sidebarMenuPadding = 0
+  ,sidebarMenuBorderRadius = 0
+  
+  ,sidebarShadowRadius = "3px 5px 5px"
+  ,sidebarShadowColor = "#aaaaaa"
+  
+  ,sidebarUserTextColor = "rgb(255,255,255)"
+  
+  ,sidebarSearchBackColor = "rgb(55,72,80)"
+  ,sidebarSearchIconColor = "rgb(153,153,153)"
+  ,sidebarSearchBorderColor = "rgb(55,72,80)"
+  
+  ,sidebarTabTextColor = "rgb(50,50,50)"
+  ,sidebarTabTextSize = 13
+  ,sidebarTabBorderStyle = "none none solid none"
+  ,sidebarTabBorderColor = "rgb(35,106,135)"
+  ,sidebarTabBorderWidth = 1
+  
+  ,sidebarTabBackColorSelected = "rgb(209, 209, 209, 1)" #this changes the color of the tab after it's been clicked
+  ,sidebarTabTextColorSelected = "rgb(0,0,0)"
+  ,sidebarTabRadiusSelected = "0px 20px 20px 0px"
+  
+  ,sidebarTabBackColorHover = "rgb(209, 209, 209, 1)" #changes color of tab on hover
+  ,sidebarTabTextColorHover = "rgb(50,50,50)"
+  ,sidebarTabBorderStyleHover = "none none solid none"
+  ,sidebarTabBorderColorHover = "rgb(75,126,151)"
+  ,sidebarTabBorderWidthHover = 1
+  ,sidebarTabRadiusHover = "0px 20px 20px 0px"
+  
+  ### boxes
+  ,boxBackColor = "rgb(255,255,255)"
+  ,boxBorderRadius = 5
+  ,boxShadowSize = "0px 1px 1px"
+  ,boxShadowColor = "rgba(0,0,0,.1)"
+  ,boxTitleSize = 16
+  ,boxDefaultColor = "rgb(210,214,220)"
+  ,boxPrimaryColor = "rgb(20,155,203)" #this changes box tab color
+  ,boxInfoColor = "rgb(210,214,220)"
+  ,boxSuccessColor = "rgba(0,255,213,1)"
+  ,boxWarningColor = "rgb(244,156,104)"
+  ,boxDangerColor = "rgb(255,88,55)"
+  
+  ,tabBoxTabColor = "rgb(255,255,255)"
+  ,tabBoxTabTextSize = 12
+  ,tabBoxTabTextColor = "rgb(0,0,0)"
+  ,tabBoxTabTextColorSelected = "rgb(0,0,0)"
+  ,tabBoxBackColor = "rgb(255,255,255)"
+  ,tabBoxHighlightColor = "rgba(44,222,235,1)"
+  ,tabBoxBorderRadius = 5
+  
+  ### inputs
+  ,buttonBackColor = "rgb(245,245,245)"
+  ,buttonTextColor = "rgb(0,0,0)"
+  ,buttonBorderColor = "rgb(200,200,200)"
+  ,buttonBorderRadius = 5
+  
+  ,buttonBackColorHover = "rgb(235,235,235)"
+  ,buttonTextColorHover = "rgb(100,100,100)"
+  ,buttonBorderColorHover = "rgb(200,200,200)"
+  
+  ,textboxBackColor = "rgb(255,255,255)"
+  ,textboxBorderColor = "rgb(200,200,200)"
+  ,textboxBorderRadius = 5
+  ,textboxBackColorSelect = "rgb(245,245,245)"
+  ,textboxBorderColorSelect = "rgb(200,200,200)"
+  
+  ### tables
+  ,tableBackColor = "rgb(255,255,255)"
+  ,tableBorderColor = "rgb(240,240,240)"
+  ,tableBorderTopSize = 1
+  ,tableBorderRowSize = 1
+  
+)
+
+##----ELECTEDS TWITTERS------------------------------------------------------
+#
+# Description: Downloads electeds' Twitter handle data
+#____________________________________________________________________________
 
 
 electeds <- readxl::read_excel("R:/POLICY-STRATEGY-HOUSING POLICY/Data Projects/Twitter Project for IGA/NYC Electeds 2022.xlsx") %>% 
@@ -312,11 +437,17 @@ choices_nysa_electeds <- setNames(nysa_electeds$Handle, nysa_electeds$Elected)
 
 choices_nyss_electeds <- setNames(nyssen_electeds$Handle, nyssen_electeds$Elected)
 
+##----USER INTERFACE----------------------------------------------------------
+#
+# Description: sets up UI
+#____________________________________________________________________________
+
+
 ui <- dashboardPage(
   
   # Application title
   dashboardHeader(
-    title = "Twitter Search"),
+    title = customLogo),
   
   # Sidebar 
   dashboardSidebar( 
@@ -436,6 +567,9 @@ ui <- dashboardPage(
   # Show results
 
   dashboardBody(
+    
+    customTheme,
+    
     shinyjs::useShinyjs(), 
     fluidRow(
       shinyjs::hidden(div(id = "tweet_wrapper", 
