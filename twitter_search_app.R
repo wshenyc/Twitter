@@ -7,6 +7,7 @@ library(glue)
 library(lubridate)
 library(shinydashboard)
 library(dashboardthemes)
+library(shinyalert)
 
 ##----TWITTER AUTHORIZATION TOKEN--------------------------------------------
 #
@@ -181,7 +182,7 @@ most_rt_func <- function(df) {
   renderTable(df)
 }
 
-##----MOST ENGAGEMENT -------------------------------------------------------
+##----MOST ENGAGEMENT FUNCTION-----------------------------------------------
 #
 # Description: Find users with highest level of engagement.
 # Engagement score is calculated as: Retweets*2 + Likes
@@ -253,6 +254,55 @@ most_eng_users <- function(df) {
 renderTable(temp_df)
 }
 
+##----VALIDATION FUNCTION----------------------------------------------------
+#
+# Description: Validate user input to not be empty & have 1 alpha
+#____________________________________________________________________________
+
+validateRequiredInput <- function(inputData, inputName) {
+  if(is.null(inputData) || is.na(inputData) || inputData == "") {
+    
+    #Create error pop up
+    shinyalert(
+      title = "Error",
+      text = paste("Please provide a value for", inputName),
+      type = "error"
+    )
+    
+    return(FALSE)
+  } else if (!str_detect(inputData, "[:alpha:]")) {
+    
+    #Create error pop up
+    shinyalert(
+      title = "Error",
+      text = paste("Query for", inputName, "must contain at least one letter"),
+      type = "error"
+    )
+    
+    return(FALSE)
+    
+  }
+  return(TRUE)
+}
+
+##----VALIDATION ELECTEDS FUNCTION-------------------------------------------
+#
+# Description: Validate electeds input
+#____________________________________________________________________________
+
+validateElectedInput <- function(nyccData, nysaData, nyssenData) {
+  if((length(nyccData) == 0 & length(nysaData) == 0 & length(nyssenData) == 0)) {
+    shinyalert(
+      title = "Error",
+      text = paste("Please select at least one elected from the dropdown menus"),
+      type = "error"
+    )
+    
+    return(FALSE)
+  }
+  return(TRUE)
+}
+
 ##----CUSTOM LOGO-----------------------------------------------------------
 #
 # Description: Creates custom logo
@@ -319,7 +369,7 @@ customTheme <- dashboardthemes::shinyDashboardThemeDIY(
   ,sidebarTabTextColor = "rgb(50,50,50)"
   ,sidebarTabTextSize = 13
   ,sidebarTabBorderStyle = "none none solid none"
-  ,sidebarTabBorderColor = "rgb(35,106,135)"
+  ,sidebarTabBorderColor = "rgb(209, 209, 209, 1)" ###border tab color 
   ,sidebarTabBorderWidth = 1
   
   ,sidebarTabBackColorSelected = "rgb(209, 209, 209, 1)" #this changes the color of the tab after it's been clicked
@@ -329,7 +379,7 @@ customTheme <- dashboardthemes::shinyDashboardThemeDIY(
   ,sidebarTabBackColorHover = "rgb(209, 209, 209, 1)" #changes color of tab on hover
   ,sidebarTabTextColorHover = "rgb(50,50,50)"
   ,sidebarTabBorderStyleHover = "none none solid none"
-  ,sidebarTabBorderColorHover = "rgb(75,126,151)"
+  ,sidebarTabBorderColorHover = "rgb(209, 209, 209, 1)"
   ,sidebarTabBorderWidthHover = 1
   ,sidebarTabRadiusHover = "0px 20px 20px 0px"
   
@@ -428,11 +478,10 @@ ui <-
     title = customLogo),
 
   # Sidebar 
-  dashboardSidebar( 
+  sidebar =  dashboardSidebar( 
     sidebarMenu(
       id = "tabs",
       
-
       menuItem("Keyword Search",
                tabName = "keyword_menu_item",
                icon = icon("comment-dots"),
@@ -609,16 +658,15 @@ ui <-
 
 
 tags$footer(img(src="https://housingconnect.nyc.gov/PublicWeb/assets/images/hpd-logo@2x.png", height = "55px"), 
-            img(src="https://www.fedex.com/content/dam/fedex/us-united-states/services/Gradient%20Delivery%20Icon-1.png", height = "75px"),
+            img(src="https://raw.githubusercontent.com/wshenyc/Twitter/main/fedex%20day.png", height = "55px"),
 align = "right", style = "
               position:relative;
               bottom:0;
               width:100%;
-              height:80px;   /* Height of the footer */
+              height:65px;   /* Height of the footer */
               color: white; #font color
-              #padding: 10px;
-              padding-right: 20px;
-              padding-left: 20px;
+              padding-right: 5px;
+              padding-left: 5px;
               padding-top: 5px;
               background-color: #333;
               #z-index: 1000;
@@ -677,15 +725,16 @@ server <- function(input, output, session) {
   observeEvent(input$keyword_search_button, {
     
     user_input <- input$search_terms
-
     
     #require user_input to not be empty and have at least one letter
-    validate(
-      need(user_input != "", 'Please enter a keyword'),
-      need(str_detect(user_input, "[:alpha:]"), 'Please enter at least one letter.')
+ 
+    validationResult <- (
+      validateRequiredInput(inputData = user_input, inputName = "keywords search")
     )
     
-    # print(user_input)
+    #check validation result
+    
+    if (validationResult == TRUE) {
     
     #checking if the verified check box was selected and returning only verified results if true
     if (input$verified & !input$org_only) {
@@ -701,24 +750,18 @@ server <- function(input, output, session) {
       user_input
     }
     
-   
+    
+    
     #setting df variable to the results of search_tweets
     df <- search_tweets(user_input, n = input$num_tweets_to_download) 
     
-    if(length(df) > 1) {
+    if(nrow(df) > 0) {
       df <- df %>% 
         tweet_cleaner() #calling custom function 
     } else {
       df <- data.frame(Message = c("Search returned no results."))
     }
     
-    
-  
-##----SUMMARY TABLES---------------------------------------------------------
-#
-# Description: Calculates most liked org. tweet & most RT'd & users w/ high
-# levels of engagement
-#____________________________________________________________________________
     
     #users with highest engagement
     output$pop_users <- most_eng_users(df)
@@ -736,6 +779,7 @@ server <- function(input, output, session) {
     shinyjs::show("user_wrapper")
     shinyjs::show("liked_wrapper")
     shinyjs::show("rt_wrapper")
+    }
   })
   
 
@@ -747,25 +791,21 @@ server <- function(input, output, session) {
   #get timelines for specific users 
   observeEvent(input$user_search_button, {
     
-    shinyjs::hide("help_wrapper")
-    
     user_input <- input$user_search
     num_tweets <- input$num_tweets_to_download
     
-    validate(
-      need(user_input != "", 'Please enter a keyword'),
-      need(str_detect(user_input, "[:alpha:]"), 'Please enter at least one letter.')
+    #validate search results 
+    validationResult <- (
+      validateRequiredInput(inputData = user_input, inputName = "users search")
     )
     
-    shinyjs::show("tweet_wrapper")
-    shinyjs::show("user_wrapper")
-    shinyjs::show("liked_wrapper")
-    shinyjs::show("rt_wrapper")
     
     #blank vars
     filter_flag <- FALSE
     filter_input <- ""
     df <- data.frame()
+    
+    if (validationResult) {
     
     #testing if there's multiple chars 
     if(str_detect(user_input, "[:space:]")) {
@@ -796,6 +836,13 @@ server <- function(input, output, session) {
     #adding the results of the search_tweets to the reactive value 
     rv(df)
     
+    shinyjs::show("tweet_wrapper")
+    shinyjs::show("user_wrapper")
+    shinyjs::show("liked_wrapper")
+    shinyjs::show("rt_wrapper")
+    
+    } #validation result bracket
+    
   })
   
 ##----ELECTEDS SEARCH--------------------------------------------------------
@@ -817,15 +864,19 @@ server <- function(input, output, session) {
     filter_flag <- FALSE
     df <- data.frame()
     
-    
-    #testing whether nys electeds and/or nyc electeds are selected 
-    
     #if no inputs selected
-    if (length(input$nyc_electeds) == 0 & length(input$nysa_electeds) == 0 & length(input$nyss_electeds) == 0) {
-      shiny::validate("Please enter an input.")
+    validationResult <- (
+      validateElectedInput(nyccData = input$nyc_electeds, nysaData = input$nysa_electeds, nyssenData = input$nyss_electeds)
+    )
+    
+    
+    #check validation result
+    
+    if (validationResult == TRUE) {
+
     
       #if just nyc councilmember selected
-    } else if (length(input$nyc_electeds) > 0 & length(input$nysa_electeds) == 0 & length(input$nyss_electeds) == 0) {
+      if (length(input$nyc_electeds) > 0 & length(input$nysa_electeds) == 0 & length(input$nyss_electeds) == 0) {
       user_input <- input$nyc_electeds
       
       #if just nysa selected
@@ -888,6 +939,8 @@ server <- function(input, output, session) {
     shinyjs::show("liked_wrapper")
     shinyjs::show("rt_wrapper")
     
+    }#validation result bracket 
+    
   })
   
 ##----TWEET TABLE & LOADING BAR----------------------------------------------
@@ -897,6 +950,7 @@ server <- function(input, output, session) {
   
   
   #saves the dfs generated from above to the tweet_table var on the UI
+  
   output$tweet_table <- DT::renderDT(server = FALSE, #setting server as false will render all results at once, potentially affecting load times
                                      extensions = 'Buttons',
                                      options = list(dom = 'Bltipr',
