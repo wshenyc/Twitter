@@ -90,9 +90,6 @@ tweet_cleaner <- function (df) {
 
 filter_func <- function(df, filter_flag, filter_input, user_input, num_tweets) {
   
-  if (filter_flag == TRUE & !str_detect(filter_input, "[:alpha:]")) {
-    df <- data.frame(Message = c("Filter input must include at least 1 letter."))
-  } else { 
   
   # checking if filter input has multiple strings
   if (filter_flag == TRUE & str_detect(filter_input, "[:space:]")) {
@@ -126,7 +123,7 @@ filter_func <- function(df, filter_flag, filter_input, user_input, num_tweets) {
         }
       }
   } 
-}
+
 
 ##----MOST LIKED FUNCTION------------------------------------------------
 #
@@ -254,6 +251,36 @@ most_eng_users <- function(df) {
 renderTable(temp_df)
 }
 
+
+##----TWEET FREQ CHART FUNCTION----------------------------------------------
+#
+# Description: Find users with highest level of engagement.
+# Engagement score is calculated as: Retweets*2 + Likes
+#____________________________________________________________________________
+
+tweet_freq <- function(df) {
+
+df <- df %>% 
+  janitor::clean_names() %>% 
+  group_by(tweet_date) %>% 
+  mutate(count = n())
+
+plot<- ggplot(df, aes(x = tweet_date, y = count)) +
+  theme_classic() +
+  geom_line(color = "#1DA1F2", size = 1) +
+  geom_point(color = "#1DA1F2", size = 3) +
+  #scale_x_date(date_labels = "%b %d",date_breaks = "1 day") +
+  ylab("") +
+  xlab("") +
+  theme(axis.title = element_text(size = 14),
+        axis.text = element_text(size = 14))
+
+renderPlot(plot)
+
+
+}
+
+
 ##----VALIDATION FUNCTION----------------------------------------------------
 #
 # Description: Validate user input to not be empty & have 1 alpha
@@ -302,6 +329,28 @@ validateElectedInput <- function(nyccData, nysaData, nyssenData) {
   }
   return(TRUE)
 }
+
+##----VALIDATION FILTER FUNCTION-------------------------------------------
+#
+# Description: Validate electeds input
+#____________________________________________________________________________
+
+validateFilterInput <- function(filter, inputData, inputName) {
+  if (filter & !str_detect(inputData, "[:alpha:]")) {
+    
+    #Create error pop up
+    shinyalert(
+      title = "Error",
+      text = paste("Query for", inputName, "must contain at least one letter"),
+      type = "error"
+    )
+    
+    return(FALSE)
+    
+  }
+  return(TRUE)
+}
+
 
 ##----CUSTOM LOGO-----------------------------------------------------------
 #
@@ -630,30 +679,56 @@ ui <-
     ,
     
    
+    column(5,
+           fluidRow(
+             shinyjs::hidden(div(id = "liked_wrapper",
+                                 shinydashboard::box(
+                                   width = NULL,
+                                   title = "Most Liked Tweet",
+                                   status = "primary",
+                                   div(style = "overflow-x:scroll",
+                                       tableOutput("most_liked"))
+                                 )))
+           ), #row
+           
+           fluidRow(
+             shinyjs::hidden(div(id = "rt_wrapper",
+                                 shinydashboard::box(
+                                   width = NULL,
+                                   title = "Most RT'd Tweet",
+                                   status = "primary",
+                                   div(style = "overflow-x:scroll",
+                                       tableOutput("most_rt"), width ="100%"))
+                                 )))
+           ), #column closer 
+           
     
-      column(5,
-             shinyjs::hidden(div(id = "liked_wrapper", 
-             shinydashboard::box(
-               width = NULL,
-               title = "Most Liked Tweet",
-               status = "primary",
-               div(style = "overflow-x:scroll",
-                   tableOutput("most_liked"))
-             ))
-             )),
+    
+    #   column(5,
+    #          shinyjs::hidden(div(id = "liked_wrapper", 
+    #          shinydashboard::box(
+    #            width = NULL,
+    #            title = "Most Liked Tweet",
+    #            status = "primary",
+    #            div(style = "overflow-x:scroll",
+    #                tableOutput("most_liked"))
+    #          ))
+    #          )),
+    # 
+    column(4,
+           shinyjs::hidden(div(id = "tweet_freq_wrapper",
+                              shinydashboard::box(
+                                width = NULL,
+                                title = "Tweet Frequency",
+                                status = "primary",
+                                div(plotOutput("tweet_freq_chart"), width = "100%")
+                              ))))
+    ) #2nd fluid row closer 
     
     
-      column(4,
-             shinyjs::hidden(div(id = "rt_wrapper", 
-             shinydashboard::box(
-               width = NULL,
-               title = "Most RT'd Tweet",
-               status = "primary",
-               div(style = "overflow-x:scroll",
-                   tableOutput("most_rt"), width ="100%"))
-             ))
-      ))
-   )),
+    ) #dashboard body
+   ), #dashboard page 
+  
 
 
 
@@ -672,7 +747,7 @@ align = "right", style = "
               #z-index: 1000;
             ") #this will move the footer to be on top of the sidebar
 
-)
+) #tag list, there should only be one parenthesis here 
 
 
 
@@ -771,6 +846,9 @@ server <- function(input, output, session) {
     
     #most retweeted tweet
     output$most_rt <- most_rt_func(df)
+    
+    #tweet freq chart
+    output$tweet_freq_chart <- tweet_freq(df)
 
     #adding the results of the search_tweets to the reactive value 
     rv(df)
@@ -779,6 +857,7 @@ server <- function(input, output, session) {
     shinyjs::show("user_wrapper")
     shinyjs::show("liked_wrapper")
     shinyjs::show("rt_wrapper")
+    shinyjs::show("tweet_freq_wrapper")
     }
   })
   
@@ -799,13 +878,13 @@ server <- function(input, output, session) {
       validateRequiredInput(inputData = user_input, inputName = "users search")
     )
     
+    if (validationResult == TRUE) {
     
     #blank vars
     filter_flag <- FALSE
     filter_input <- ""
     df <- data.frame()
     
-    if (validationResult) {
     
     #testing if there's multiple chars 
     if(str_detect(user_input, "[:space:]")) {
@@ -821,6 +900,13 @@ server <- function(input, output, session) {
     } else {
     }
     
+    #testing filter validlity  
+    validationInputResult <- (
+      validateFilterInput(filter = filter_flag, inputData = filter_input, inputName = "filter")
+    )
+    
+    if (validationInputResult == TRUE) {
+    
     #filter function
     df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
     
@@ -833,6 +919,9 @@ server <- function(input, output, session) {
     #most retweeted tweet
     output$most_rt <- most_rt_func(df)
     
+    #tweet freq chart
+    output$tweet_freq_chart <- tweet_freq(df)
+    
     #adding the results of the search_tweets to the reactive value 
     rv(df)
     
@@ -840,9 +929,10 @@ server <- function(input, output, session) {
     shinyjs::show("user_wrapper")
     shinyjs::show("liked_wrapper")
     shinyjs::show("rt_wrapper")
+    shinyjs::show("tweet_freq_wrapper")
     
     } #validation result bracket
-    
+  } #other validaiton result bracket
   })
   
 ##----ELECTEDS SEARCH--------------------------------------------------------
@@ -919,6 +1009,13 @@ server <- function(input, output, session) {
     } else {
     }
     
+      #validating filter 
+      validationInputResult <- (
+        validateFilterInput(filter = filter_flag, inputData = filter_input, inputName = "filter")
+      )
+      
+      if (validationInputResult == TRUE) {
+      
     #filter function
     df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
     
@@ -931,6 +1028,9 @@ server <- function(input, output, session) {
     #most retweeted tweet
     output$most_rt <- most_rt_func(df)
     
+    #tweet freq chart
+    output$tweet_freq_chart <- tweet_freq(df)
+    
     #adding the results of the search_tweets to the reactive value
     rv(df)
     
@@ -938,9 +1038,10 @@ server <- function(input, output, session) {
     shinyjs::show("user_wrapper")
     shinyjs::show("liked_wrapper")
     shinyjs::show("rt_wrapper")
+    shinyjs::show("tweet_freq_wrapper")
     
     }#validation result bracket 
-    
+    }#other validation result bracket 
   })
   
 ##----TWEET TABLE & LOADING BAR----------------------------------------------
@@ -951,7 +1052,7 @@ server <- function(input, output, session) {
   
   #saves the dfs generated from above to the tweet_table var on the UI
   
-  output$tweet_table <- DT::renderDT(server = FALSE, #setting server as false will render all results at once, potentially affecting load times
+  output$tweet_table <- DT::renderDT(server = TRUE, #setting server as false will render all results at once, potentially affecting load times
                                      extensions = 'Buttons',
                                      options = list(dom = 'Bltipr',
                                                     buttons = list(
