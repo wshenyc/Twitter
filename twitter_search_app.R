@@ -259,7 +259,7 @@ renderTable(temp_df)
 #____________________________________________________________________________
 
 customLogo <- shinyDashboardLogoDIY(
-  boldText = "Twitter"
+  boldText = paste(icon("twitter"), "Twitter")
   ,mainText = "Search"
   ,textSize = 20
   ,badgeText = "v1.1"
@@ -420,10 +420,11 @@ ui <-
   tagList(
   dashboardPage(
     
+    # Browers Window title
+    title = "Twitter Search",
     
-  
-  # Application title
-  dashboardHeader(
+  # Header 
+  header = dashboardHeader(
     title = customLogo),
 
   # Sidebar 
@@ -613,7 +614,7 @@ align = "right", style = "
               position:relative;
               bottom:0;
               width:100%;
-              height:85px;   /* Height of the footer */
+              height:80px;   /* Height of the footer */
               color: white; #font color
               #padding: 10px;
               padding-right: 20px;
@@ -899,12 +900,13 @@ server <- function(input, output, session) {
   output$tweet_table <- DT::renderDT(server = FALSE, #setting server as false will render all results at once, potentially affecting load times
                                      extensions = 'Buttons',
                                      options = list(dom = 'Bltipr',
-                                                    buttons = list(list(extend = 'collection',
-                                                                        buttons = c('csv', 'excel'), #files can be downloaded as a csv or excel
-                                                                        text = "Download Results",
-                                                                        exportOptions = list(
-                                                                          modifiers = list(page = "all") #will download all results
-                                                                        )))), 
+                                                    buttons = list(
+                                                      list(extend = 'collection',
+                                                           buttons = c('csv', 'excel'), #files can be downloaded as a csv or excel
+                                                           text = "Download All Results",
+                                                           exportOptions = list(
+                                                             modifiers = list(page = "all") #will download all results
+                                                             )))), 
                                      filter = "top", {
                                  
                                       #requiring one of the inputs to have been clicked
