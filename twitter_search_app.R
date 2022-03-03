@@ -90,36 +90,45 @@ tweet_cleaner <- function (df) {
 
 filter_func <- function(df, filter_flag, filter_input, user_input, num_tweets) {
   
+  # if (filter_flag == FALSE) {
+  #   df <- get_timeline(user_input, n = num_tweets)
+  #   if (nrow(df) > 0) {
+  #     df <- df %>% 
+  #       tweet_cleaner()
+  #   } else {
+  #     df <- data.frame(Message = c("no results returned"))
+  #   }
+  # }
   
   # checking if filter input has multiple strings
   if (filter_flag == TRUE & str_detect(filter_input, "[:space:]")) {
     filter_input <- unlist(str_split(filter_input, "[:space:]"))
-    df <- get_timeline(user_input, n = num_tweets) 
-    if (length(df) > 0) {
-    df <- df %>% 
-      filter(grepl(paste(filter_input, collapse = "|"), text, ignore.case = TRUE)) %>% 
+    df <- get_timeline(user_input, n = num_tweets)
+    if (nrow(df) > 0) {
+    df <- df %>%
+      filter(grepl(paste(filter_input, collapse = "|"), text, ignore.case = TRUE)) %>%
       tweet_cleaner()
     } else {
-      df <- data.frame(message = c("Your search returned no results."))
+      df <- data.frame(Message = c("Your search returned no results."))
     }
   # checking if filter exists and is not multiple strings
     } else if (filter_flag == TRUE & !str_detect(filter_input, "[:space:]")) {
       df <- get_timeline(user_input, n = num_tweets)
-      if (length(df) >0) {
-        df <- df %>% 
-          filter(grepl(filter_input, text, ignore.case = TRUE)) %>% 
+      if (nrow(df) >0) {
+        df <- df %>%
+          filter(grepl(filter_input, text, ignore.case = TRUE)) %>%
         tweet_cleaner()
       } else {
         df <- data.frame(Message = c("Your search returned no results."))
       }
   #if no filter, just do standard search
       } else {
-        df <- get_timeline(user_input, n = num_tweets) 
-        if (length(df) > 0) {
-          df <- df %>% 
+        df <- get_timeline(user_input, n = num_tweets)
+        if (nrow(df) > 1) {
+          df <- df %>%
             tweet_cleaner()
         }else {
-          df <- data.frame(message = c("Your search returned no results."))
+          df <- data.frame(Message = c("Your search returned no results."))
         }
       }
   } 
@@ -133,12 +142,12 @@ filter_func <- function(df, filter_flag, filter_input, user_input, num_tweets) {
 #most liked tweet
 most_liked_func <- function(df) {
   
+  if (!"Message" %in% colnames(df)) {
     df <- df %>% 
       janitor::clean_names() %>% 
       filter(retweet == "No") %>%
       filter(like_count > 0)
-    
-    if (nrow(df) != 0) {
+    if (nrow(df) > 0) {
       df <- df %>% 
         filter(like_count == max(like_count)) %>%
         distinct(tweet, .keep_all = T) %>%
@@ -149,6 +158,10 @@ most_liked_func <- function(df) {
     } else {
       df <- data.frame(Message = c("No original tweets with more than 0 likes"))
     }
+  } else {
+    df <- data.frame(Message = c("No tweets returned"))
+  }
+  
   renderTable(df)
 }
     
@@ -160,6 +173,9 @@ most_liked_func <- function(df) {
 
 #most retweeted tweet
 most_rt_func <- function(df) {
+  
+  #checking if it's the blank df
+  if (!"Message" %in% colnames(df)) {
   df <- df %>% 
     janitor::clean_names() %>% 
     filter(retweet == "No") %>%
@@ -176,6 +192,9 @@ most_rt_func <- function(df) {
   } else {
     df <- data.frame(Message = c("No original tweets with more than 0 RT's"))
   }
+  } else {
+    df <- data.frame(Message = c("No tweets returned"))
+  }
   renderTable(df)
 }
 
@@ -190,6 +209,7 @@ most_eng_users <- function(df) {
   #creating temp df
   temp_df <- data.frame()
   
+  if (!"Message" %in% colnames(df)) {
   #filtering out retweets
   df <- df %>% 
     janitor::clean_names() %>%
@@ -246,6 +266,9 @@ most_eng_users <- function(df) {
   } else {
     temp_df <- data.frame(Message = c("Search results returned no original tweets"))
   }
+  } else {
+    temp_df <- data.frame(Message = c("No tweets returned"))
+  }
   
   #finally render results to UI 
 renderTable(temp_df)
@@ -259,10 +282,11 @@ renderTable(temp_df)
 #____________________________________________________________________________
 
 tweet_freq <- function(df) {
-
-df <- df %>% 
-  janitor::clean_names() %>% 
-  group_by(tweet_date) %>% 
+  
+  if(!"Message" %in% colnames(df)) {
+    df <- df %>% 
+      janitor::clean_names() %>% 
+      group_by(tweet_date) %>% 
   mutate(count = n())
 
 plot<- ggplot(df, aes(x = tweet_date, y = count)) +
@@ -275,8 +299,12 @@ plot<- ggplot(df, aes(x = tweet_date, y = count)) +
   theme(axis.title = element_text(size = 14),
         axis.text = element_text(size = 14))
 
-renderPlot(plot)
-
+  }
+  else {
+  
+    plot <- ggplot() + theme_void()
+  }
+  renderPlot(plot)
 
 }
 
@@ -535,7 +563,7 @@ ui <-
                tabName = "keyword_menu_item",
                icon = icon("comment-dots"),
                menuSubItem(icon = NULL,
-                           numericInput("num_tweets_to_download",
+                           numericInput("keywords_num_tweets",
                                         "Number of Tweets to Download:",
                                         min = 100,
                                         max = 18000,
@@ -560,7 +588,7 @@ ui <-
                tabName = "user_search_menu_item",
                icon = icon("users"),
                menuSubItem(icon = NULL,
-                           numericInput("num_tweets_to_download",
+                           numericInput("user_num_tweets",
                                         "Number of Tweets to Download:",
                                         min = 100,
                                         max = 18000,
@@ -584,7 +612,7 @@ ui <-
                tabName = "electeds_search_menu_item",
                icon = icon("landmark"),
                menuSubItem(icon = NULL,
-                           numericInput("num_tweets_to_download",
+                           numericInput("electeds_num_tweets",
                                         "Number of Tweets to Download:",
                                         min = 100,
                                         max = 18000,
@@ -828,7 +856,7 @@ server <- function(input, output, session) {
     
     
     #setting df variable to the results of search_tweets
-    df <- search_tweets(user_input, n = input$num_tweets_to_download) 
+    df <- search_tweets(user_input, n = input$keywords_num_tweets) 
     
     if(nrow(df) > 0) {
       df <- df %>% 
@@ -836,6 +864,7 @@ server <- function(input, output, session) {
     } else {
       df <- data.frame(Message = c("Search returned no results."))
     }
+    
     
     
     #users with highest engagement
@@ -871,7 +900,7 @@ server <- function(input, output, session) {
   observeEvent(input$user_search_button, {
     
     user_input <- input$user_search
-    num_tweets <- input$num_tweets_to_download
+    num_tweets <- input$user_num_tweets
     
     #validate search results 
     validationResult <- (
@@ -910,6 +939,10 @@ server <- function(input, output, session) {
     #filter function
     df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
     
+    ##testing what happens when user doesn't exist
+    print(paste("how many rows: ", nrow(df)))
+    print(paste("length: ", length(df)))
+    
     #users with highest engagement
     output$pop_users <- most_eng_users(df)
     
@@ -920,7 +953,7 @@ server <- function(input, output, session) {
     output$most_rt <- most_rt_func(df)
     
     #tweet freq chart
-    output$tweet_freq_chart <- tweet_freq(df)
+    #output$tweet_freq_chart <- tweet_freq(df)
     
     #adding the results of the search_tweets to the reactive value 
     rv(df)
@@ -946,7 +979,7 @@ server <- function(input, output, session) {
     
     shinyjs::hide("help_wrapper")
    
-    num_tweets <- input$num_tweets_to_download
+    num_tweets <- input$electeds_num_tweets
     
     #setting blank variables
     user_input <- ""
