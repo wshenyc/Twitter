@@ -57,7 +57,8 @@ tweet_cleaner <- function (df) {
                quote_count,
                reply_count,
                hashtags,
-               verified) 
+               verified,
+               status_url) 
   df <- mutate(df, is_quote = ifelse(is_quote == "TRUE",
                                      "Yes",
                                      "No"),
@@ -67,7 +68,9 @@ tweet_cleaner <- function (df) {
                verified = ifelse(verified == "TRUE",
                                  "Yes",
                                  "No"),
-               created_at = as.Date(created_at))  #converting to date format
+               created_at = as.Date(created_at), #converting to date format
+               status_url = paste("<a href='", status_url, "' target = '_blank'>View Tweet</a>", sep = ""))  
+  
   df <-  rename(df, "Tweet Date" = created_at,
                 "Twitter User" = screen_name,
                 "Tweet" = text,
@@ -78,9 +81,66 @@ tweet_cleaner <- function (df) {
                 "Quote Count" = quote_count,
                 "Reply Count" = reply_count,
                 "Hashtags Used" = hashtags,
-                "Verified?" = verified
+                "Verified?" = verified,
+                "Link" = status_url
   )
   
+}
+
+##----TWEET TABLE & LOADING BAR----------------------------------------------
+#
+# Description: sets up tweet table & creates a loading bar
+#____________________________________________________________________________
+
+
+#saves the dfs generated from above to the tweet_table var on the UI
+
+tweet_table_gen <- function(df) { 
+  
+  
+  if(!"Message" %in% colnames(df)) {
+    #creating empty df
+    dat <- data.frame(x = numeric(0), y = numeric(0))
+
+    #progress bar
+    withProgress(message = 'Creating table', value = 0, {
+      # Number of times we'll go through the loop
+      n <- 10
+
+      for (i in 1:n) {
+        # Each time through the loop, add another row of data. This is
+        # a stand-in for a long-running computation.
+        dat <- rbind(dat, data.frame(x = rnorm(1), y = rnorm(1)))
+
+        # Increment the progress bar, and update the detail text.
+        incProgress(1/n, detail = paste(i*10, "%", sep = ""))
+
+        # Pause for 0.1 seconds to simulate a long computation.
+        Sys.sleep(0.1)
+      }
+    })
+      
+    DT::renderDT(df,
+                 server = TRUE, #setting server as false will render all results at once, potentially affecting load times
+                 extensions = 'Buttons',
+                 escape = 12, #allowing for html code to work
+                 options = list(
+                   dom = 'Bltipr',
+                   buttons = list(
+                     list(extend = 'collection',
+                          buttons = c('csv', 'excel'), #files can be downloaded as a csv or excel
+                          text = "Download Page",
+                          exportOptions = list(
+                            modifiers = list(page = "all") #will download all results
+                          )))),
+                 filter = "top")
+                   
+  } else {
+    DT::renderDT(df,
+                 options = list(
+                   dom = 't'
+                 ))
+  }
 }
 
 ##----FILTER FUNCTION---------------------------------------------------------
@@ -89,16 +149,6 @@ tweet_cleaner <- function (df) {
 #____________________________________________________________________________
 
 filter_func <- function(df, filter_flag, filter_input, user_input, num_tweets) {
-  
-  # if (filter_flag == FALSE) {
-  #   df <- get_timeline(user_input, n = num_tweets)
-  #   if (nrow(df) > 0) {
-  #     df <- df %>% 
-  #       tweet_cleaner()
-  #   } else {
-  #     df <- data.frame(Message = c("no results returned"))
-  #   }
-  # }
   
   # checking if filter input has multiple strings
   if (filter_flag == TRUE & str_detect(filter_input, "[:space:]")) {
@@ -151,10 +201,11 @@ most_liked_func <- function(df) {
       df <- df %>% 
         filter(like_count == max(like_count)) %>%
         distinct(tweet, .keep_all = T) %>%
-        select(twitter_user, tweet, like_count) %>%
-        rename("Twitter User" = twitter_user,
+        select(twitter_user, tweet, like_count, link) %>%
+        rename("User" = twitter_user,
                "Tweet" = tweet,
-               "Like Count" = like_count)
+               "Like Count" = like_count,
+               "Link" = link)
     } else {
       df <- data.frame(Message = c("No original tweets with more than 0 likes"))
     }
@@ -162,7 +213,18 @@ most_liked_func <- function(df) {
     df <- data.frame(Message = c("No tweets returned"))
   }
   
-  renderTable(df)
+  if(!"Message" %in% colnames(df)) {
+  DT::renderDT(df, 
+               escape = 4, 
+               options = list(
+                 dom = 't'
+               ))
+  }else {
+    DT::renderDT(df,
+                 options = list(
+                   dom = 't'
+                 ))
+  }
 }
     
 
@@ -185,17 +247,30 @@ most_rt_func <- function(df) {
     df <- df %>%
       filter(retweet_count == max(retweet_count)) %>%
       distinct(tweet, .keep_all = T) %>%
-      select(twitter_user, tweet, retweet_count) %>%
-      rename("Twitter User" = twitter_user,
+      select(twitter_user, tweet, retweet_count, link) %>%
+      rename("User" = twitter_user,
              "Tweet" = tweet,
-             "RT Count" = retweet_count)
+             "RT Count" = retweet_count,
+             "Link" = link)
   } else {
     df <- data.frame(Message = c("No original tweets with more than 0 RT's"))
   }
   } else {
     df <- data.frame(Message = c("No tweets returned"))
   }
-  renderTable(df)
+  
+  if(!"Message" %in% colnames(df)) {
+    DT::renderDT(df, 
+                 escape = 4, 
+                 options = list(
+                   dom = 't'
+                 ))
+  }else {
+    DT::renderDT(df,
+                 options = list(
+                   dom = 't'
+                 ))
+  }
 }
 
 ##----MOST ENGAGEMENT FUNCTION-----------------------------------------------
@@ -231,9 +306,10 @@ most_eng_users <- function(df) {
         subset(eng_score > quantile(eng_score, prob = .90)) %>%  #top 10%
         arrange(desc(eng_score)) %>%
         select(twitter_user, eng_score) %>%
+        mutate(twitter_user = paste("<a href='https://twitter.com/", twitter_user, "' target = '_blank'>",twitter_user,"</a>", sep = "")) %>%  
         head(10) %>%
         rename("User" = twitter_user,
-               "Engagement/Tweet" = eng_score)
+               "Engagement" = eng_score)
       
       #case 1b: if the engagement score total is zero, inform user 
     } else {
@@ -254,8 +330,9 @@ most_eng_users <- function(df) {
         distinct(twitter_user, .keep_all = T) %>%
         arrange(desc(eng_score)) %>%
         select(twitter_user, eng_score) %>%
+        mutate(twitter_user = paste("<a href='https://twitter.com/", twitter_user, "' target = '_blank'>",twitter_user,"</a>", sep = "")) %>%
         rename("User" = twitter_user,
-               "Engagement/Tweet" = eng_score)
+               "Engagement" = eng_score)
       
       #case 2b: if engagement score total is zero, inform user 
     } else {
@@ -271,7 +348,20 @@ most_eng_users <- function(df) {
   }
   
   #finally render results to UI 
-renderTable(temp_df)
+  
+  if(!"Message" %in% colnames(df)) {
+    DT::renderDT(temp_df, 
+                 escape = 1, 
+                 options = list(
+                   dom = 't'
+                 ))
+  }else {
+    DT::renderDT(temp_df,
+                 options = list(
+                   dom = 't'
+                 ))
+  }
+
 }
 
 
@@ -337,6 +427,13 @@ validateRequiredInput <- function(inputData, inputName) {
     return(FALSE)
     
   }
+  
+  shinyalert(
+    title = "Success",
+    text = paste("Successful search! Please wait up to 10 seconds if a large number of tweets were requested."),
+    type = "success"
+  )
+  
   return(TRUE)
 }
 
@@ -355,6 +452,13 @@ validateElectedInput <- function(nyccData, nysaData, nyssenData) {
     
     return(FALSE)
   }
+  
+  shinyalert(
+    title = "Success",
+    text = paste("Successful search! Please wait up to 10 seconds if a large number of tweets were requested."),
+    type = "success"
+  )
+  
   return(TRUE)
 }
 
@@ -376,6 +480,7 @@ validateFilterInput <- function(filter, inputData, inputName) {
     return(FALSE)
     
   }
+  
   return(TRUE)
 }
 
@@ -510,6 +615,7 @@ customTheme <- dashboardthemes::shinyDashboardThemeDIY(
 # Description: Downloads electeds' Twitter handle data
 #____________________________________________________________________________
 
+####need to update this######
 
 electeds <- readxl::read_excel("R:/POLICY-STRATEGY-HOUSING POLICY/Data Projects/Twitter Project for IGA/NYC Electeds 2022.xlsx") %>% 
   arrange(Elected) %>% 
@@ -524,11 +630,18 @@ nysa_electeds <- electeds %>%
 nyssen_electeds <- electeds %>% 
   filter(Type == "nycsenate")
 
+nyscong_electeds <- electeds %>% 
+  filter(Type == "nyccongress")
+
 choices_nyc_electeds <- setNames(nyc_electeds$Handle, nyc_electeds$Elected)
 
 choices_nysa_electeds <- setNames(nysa_electeds$Handle, nysa_electeds$Elected)
 
 choices_nyss_electeds <- setNames(nyssen_electeds$Handle, nyssen_electeds$Elected)
+
+choices_fed_electeds <- setNames(nyscong_electeds$Handle, nyscong_electeds$Elected)
+
+#choices_exec_electeds <- setNames(nysexec_electeds$Handle, nysexec_electeds$Elected)
 
 ##----FONTS------------------------------------------------------------------
 #
@@ -655,6 +768,32 @@ ui <-
                              multiple = T,
                              )),
                
+               # menuSubItem(icon = NULL,
+               #             shinyWidgets::pickerInput(
+               #               "nyscong_electeds",
+               #               "NYC Congressmembers", 
+               #               choices= choices_fed_electeds,
+               #               options = list(`actions-box` = TRUE,
+               #                              `live-search` = TRUE,
+               #                              `dropup-auto` = F,
+               #                              `live-search-placeholder` = "Search name",
+               #                              `size` = 10),
+               #               multiple = T,
+               #             )),
+               
+               # menuSubItem(icon = NULL,
+               #             shinyWidgets::pickerInput(
+               #               "nysexec_electeds",
+               #               "Executive Leaders", 
+               #               choices= choices_exec_electeds,
+               #               options = list(`actions-box` = TRUE,
+               #                              `live-search` = TRUE,
+               #                              `dropup-auto` = F,
+               #                              `live-search-placeholder` = "Search name",
+               #                              `size` = 10),
+               #               multiple = T,
+               #             )),
+               
                menuSubItem(icon = NULL,
                            textInput('filter_electeds',
                                      'Filter:',
@@ -664,11 +803,8 @@ ui <-
                            actionButton("electeds_search", "Elected Search")),
                menuSubItem(icon = icon("info"),
                            actionButton("show_electeds", "View instructions")))
-      
-
-      
-    )
-  ),
+    ) #sidebar menu closer
+  ), #dashboardsidebar coser 
   
   # Show results
 
@@ -685,7 +821,7 @@ ui <-
         title = p("Tweet Table", style = 'font-size:24px;'),
         status = "primary",
         div(style = "overflow-x: scroll",
-            DTOutput("tweet_table"))
+            DTOutput("tweet_table"), width = "100%")
         ))
       ))
     ,
@@ -700,7 +836,7 @@ ui <-
                title = "Most 'Popular' Users",
                status = "primary",
                div(style = "overflow-x:scroll",
-                   tableOutput("pop_users")),
+                   DTOutput("pop_users")),
                "Weighted average of RT (2x) and favorites (1x) per tweet"
              ))
     ))
@@ -709,13 +845,13 @@ ui <-
    
     column(5,
            fluidRow(
-             shinyjs::hidden(div(id = "liked_wrapper",
+             shinyjs::hidden(div(id ="liked_wrapper",
                                  shinydashboard::box(
                                    width = NULL,
                                    title = "Most Liked Tweet",
                                    status = "primary",
                                    div(style = "overflow-x:scroll",
-                                       tableOutput("most_liked"))
+                                       DTOutput("most_liked"))
                                  )))
            ), #row
            
@@ -726,23 +862,11 @@ ui <-
                                    title = "Most RT'd Tweet",
                                    status = "primary",
                                    div(style = "overflow-x:scroll",
-                                       tableOutput("most_rt"), width ="100%"))
+                                       DTOutput("most_rt"), width ="100%"))
                                  )))
            ), #column closer 
            
     
-    
-    #   column(5,
-    #          shinyjs::hidden(div(id = "liked_wrapper", 
-    #          shinydashboard::box(
-    #            width = NULL,
-    #            title = "Most Liked Tweet",
-    #            status = "primary",
-    #            div(style = "overflow-x:scroll",
-    #                tableOutput("most_liked"))
-    #          ))
-    #          )),
-    # 
     column(4,
            shinyjs::hidden(div(id = "tweet_freq_wrapper",
                               shinydashboard::box(
@@ -772,8 +896,8 @@ align = "right", style = "
               padding-left: 5px;
               padding-top: 5px;
               background-color: #333;
-              #z-index: 1000;
-            ") #this will move the footer to be on top of the sidebar
+              #z-index: 1000;#this will move the footer to be on top of the sidebar
+            ") 
 
 ) #tag list, there should only be one parenthesis here 
 
@@ -807,18 +931,7 @@ server <- function(input, output, session) {
   
   # Show the model on start up ...
   showModal(query_modal)
-  
-  
-  #creating a blank reactive val to save the results of the Twitter searches in
-  #need a reactive value because this needs to automatically re-execute when user inputs change 
-  rv = reactiveVal()
-  summary = reactiveVal()
-  most_retweet = reactiveVal()
-  most_liked = reactiveVal()
-  
-  #creating blank dataframe
-  df <- data.frame()
-  
+
   
 ##----KEYWORD SEARCH---------------------------------------------------------
 #
@@ -880,7 +993,7 @@ server <- function(input, output, session) {
     output$tweet_freq_chart <- tweet_freq(df)
 
     #adding the results of the search_tweets to the reactive value 
-    rv(df)
+    output$tweet_table <- tweet_table_gen(df)
     
     shinyjs::show("tweet_wrapper")
     shinyjs::show("user_wrapper")
@@ -939,10 +1052,6 @@ server <- function(input, output, session) {
     #filter function
     df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
     
-    ##testing what happens when user doesn't exist
-    print(paste("how many rows: ", nrow(df)))
-    print(paste("length: ", length(df)))
-    
     #users with highest engagement
     output$pop_users <- most_eng_users(df)
     
@@ -953,10 +1062,10 @@ server <- function(input, output, session) {
     output$most_rt <- most_rt_func(df)
     
     #tweet freq chart
-    #output$tweet_freq_chart <- tweet_freq(df)
+    output$tweet_freq_chart <- tweet_freq(df)
     
     #adding the results of the search_tweets to the reactive value 
-    rv(df)
+    output$tweet_table <- tweet_table_gen(df)
     
     shinyjs::show("tweet_wrapper")
     shinyjs::show("user_wrapper")
@@ -965,7 +1074,7 @@ server <- function(input, output, session) {
     shinyjs::show("tweet_freq_wrapper")
     
     } #validation result bracket
-  } #other validaiton result bracket
+  } #other validation result bracket
   })
   
 ##----ELECTEDS SEARCH--------------------------------------------------------
@@ -1065,7 +1174,7 @@ server <- function(input, output, session) {
     output$tweet_freq_chart <- tweet_freq(df)
     
     #adding the results of the search_tweets to the reactive value
-    rv(df)
+    output$tweet_table <- tweet_table_gen(df)
     
     shinyjs::show("tweet_wrapper")
     shinyjs::show("user_wrapper")
@@ -1077,61 +1186,6 @@ server <- function(input, output, session) {
     }#other validation result bracket 
   })
   
-##----TWEET TABLE & LOADING BAR----------------------------------------------
-#
-# Description: sets up tweet table & creates a loading bar
-#____________________________________________________________________________
-  
-  
-  #saves the dfs generated from above to the tweet_table var on the UI
-  
-  output$tweet_table <- DT::renderDT(server = TRUE, #setting server as false will render all results at once, potentially affecting load times
-                                     extensions = 'Buttons',
-                                     options = list(dom = 'Bltipr',
-                                                    buttons = list(
-                                                      list(extend = 'collection',
-                                                           buttons = c('csv', 'excel'), #files can be downloaded as a csv or excel
-                                                           text = "Download All Results",
-                                                           exportOptions = list(
-                                                             modifiers = list(page = "all") #will download all results
-                                                             )))), 
-                                     filter = "top", {
-                                 
-                                      #requiring one of the inputs to have been clicked
-                                      if(input$keyword_search_button |
-                                          input$user_search_button |
-                                          input$electeds_search) {
-                                       
-                                      #creating empty df
-                                       dat <- data.frame(x = numeric(0), y = numeric(0))
-                                       
-                                      #progress bar
-                                       withProgress(message = 'Creating table', value = 0, {
-                                         # Number of times we'll go through the loop
-                                         n <- 10
-                                         
-                                         for (i in 1:n) {
-                                           # Each time through the loop, add another row of data. This is
-                                           # a stand-in for a long-running computation.
-                                           dat <- rbind(dat, data.frame(x = rnorm(1), y = rnorm(1)))
-                                           
-                                           # Increment the progress bar, and update the detail text.
-                                           incProgress(1/n, detail = paste(i*10, "%", sep = ""))
-                                           
-                                           # Pause for 0.05 seconds to simulate a long computation.
-                                           Sys.sleep(0.1)
-                                         }
-                                         
-                                       })
-                                      } else {
-                                      }
-                                       
-                                       #returning the dt 
-                                       rv()
-                                     })
-  
-
-
 
 ##----INSTRUCTIONS MODALS----------------------------------------------------
 #
@@ -1156,6 +1210,8 @@ server <- function(input, output, session) {
       br(),
       div('It is also possible to search for exact phrases using double quotes. 
       To do this, wrap double quotes around the query, such as "housing new york".'),
+      br(),
+      div('If searching for specific hashtags, type a # before the term. Ex: #goodcause.'),
       br(),
       div(tags$b("Verified Accounts?")), 
       div('Checking this box will automatically filter the returned search results to 
@@ -1182,7 +1238,8 @@ server <- function(input, output, session) {
       For example, if searching NYCMayor and NYCHousing and selecting 100 tweets to download will yield 200 tweets."),
       br(),
       div(tags$b("Filter")), 
-      div("Entering keywords here will filter the user search to only results that include the keywords."),
+      div("Entering keywords here will filter the user search to results that include any of the keywords and in
+          any order."),
       easyClose = TRUE,
       footer = NULL
     ))
@@ -1198,7 +1255,8 @@ server <- function(input, output, session) {
       div("Select or search for any elected official's name. Selection boxes can be used together or separately."),
       br(),
       div(tags$b("Filter")), 
-      div("Entering keywords here will filter the user search to only results that include the keywords."),
+      div("Entering keywords here will filter the user search to results that include any of the keywords and in
+          any order."),
       easyClose = TRUE,
       footer = NULL
     ))
