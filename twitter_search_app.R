@@ -87,7 +87,39 @@ tweet_cleaner <- function (df) {
   
 }
 
-##----TWEET TABLE & LOADING BAR----------------------------------------------
+##----LOADING BAR------------------------------------------------------------
+#
+# Description: sets up tweet table & creates a loading bar
+#____________________________________________________________________________
+
+loading_bar <- function(is_loading) {
+  
+if (is_loading == TRUE) {
+#creating empty df
+dat <- data.frame(x = numeric(0), y = numeric(0))
+
+#progress bar
+withProgress(message = 'Creating table', value = 0, {
+  # Number of times we'll go through the loop
+  n <- 10
+  
+  for (i in 1:n) {
+    # Each time through the loop, add another row of data. This is
+    # a stand-in for a long-running computation.
+    dat <- rbind(dat, data.frame(x = rnorm(1), y = rnorm(1)))
+    
+    # Increment the progress bar, and update the detail text.
+    incProgress(1/n, detail = paste(i*10, "%", sep = ""))
+    
+    # Pause for 0.1 seconds to simulate a long computation.
+    Sys.sleep(0.1)
+  }
+})
+}
+
+}
+
+##----TWEET TABLE------------------------------------------------------------
 #
 # Description: sets up tweet table & creates a loading bar
 #____________________________________________________________________________
@@ -99,48 +131,97 @@ tweet_table_gen <- function(df) {
   
   
   if(!"Message" %in% colnames(df)) {
+    
     #creating empty df
     dat <- data.frame(x = numeric(0), y = numeric(0))
-
-    #progress bar
-    withProgress(message = 'Creating table', value = 0, {
-      # Number of times we'll go through the loop
-      n <- 10
-
-      for (i in 1:n) {
-        # Each time through the loop, add another row of data. This is
-        # a stand-in for a long-running computation.
-        dat <- rbind(dat, data.frame(x = rnorm(1), y = rnorm(1)))
-
-        # Increment the progress bar, and update the detail text.
-        incProgress(1/n, detail = paste(i*10, "%", sep = ""))
-
-        # Pause for 0.1 seconds to simulate a long computation.
-        Sys.sleep(0.1)
-      }
-    })
+    
+    DT::renderDT(
       
-    DT::renderDT(df,
-                 server = TRUE, #setting server as false will render all results at once, potentially affecting load times
-                 extensions = 'Buttons',
-                 escape = 12, #allowing for html code to work
-                 options = list(
-                   dom = 'Bltipr',
-                   buttons = list(
-                     list(extend = 'collection',
-                          buttons = c('csv', 'excel'), #files can be downloaded as a csv or excel
-                          text = "Download Page",
-                          exportOptions = list(
-                            modifiers = list(page = "all") #will download all results
-                          )))),
-                 filter = "top")
+      #progress bar
+      withProgress(message = 'Creating table', value = 0, {
+        # Number of times we'll go through the loop
+        n <- 10
+
+        for (i in 1:n) {
+          # Each time through the loop, add another row of data. This is
+          # a stand-in for a long-running computation.
+          dat <- rbind(dat, data.frame(x = rnorm(1), y = rnorm(1)))
+
+          # Increment the progress bar, and update the detail text.
+          incProgress(1/n, detail = paste(i*10, "%", sep = ""))
+
+          # Pause for 0.1 seconds to simulate a long computation.
+          Sys.sleep(0.1)
+        }
                    
+        datatable(df,
+                  extensions = 'Buttons',
+                  escape = 12,
+                  options = list(dom = 'Bltipr',
+                                 buttons = 
+                                   list(
+                                     list(extend = 'collection',
+                                        buttons = c('csv', 'excel'),
+                                        text = 'Download Page',
+                                        exportOptions = list(
+                                          modifiers = list(page = 'current')
+                                 )))),
+                  filter = 'top')
+      }),
+      server = TRUE
+    )
+    
   } else {
     DT::renderDT(df,
                  options = list(
                    dom = 't'
                  ))
   }
+}
+
+##----ELECTEDS SEARCH FUNCTION-----------------------------------------------
+#
+# Description: custom function to track multiple drop downs
+#____________________________________________________________________________
+
+electeds_search_fun <- function(user_input, inputone, inputtwo, inputthree) {
+
+#if just nyc councilmember selected
+if (length(inputone) > 0 & length(inputtwo) == 0 & length(inputthree) == 0) {
+  user_input <- inputone
+  
+  #if just nysa selected
+} else if (length(inputone) == 0 & length(inputtwo) > 0 & length(inputthree) == 0) {
+  user_input <- inputtwo
+  
+  #if just nys sen selected
+} else if (length(inputone) == 0 & length(inputtwo) == 0 & length(inputthree) > 0) {
+  user_input <- inputthree 
+  
+  #if nycc and nysa selected 
+} else if (length(inputone) > 0 & length(inputtwo) > 0 & length(inputthree) == 0) {
+  #this line of code is pasting the selected nys and nyc electeds together
+  #then it is splitting those into separate strings based on whitespace
+  #finally it is converting the list into a vector
+  #so that the get_timeline() function works
+  user_input <- unlist(str_split(paste(inputone, inputtwo), "[:space:]"))
+  
+  #if nycc and nys sen selected 
+} else if (length(inputone) > 0 & length(inputtwo) == 0 & length(inputthree) > 0) {
+  user_input <- unlist(str_split(paste(inputone, inputthree), "[:space:]"))
+  
+  #if nysa and nyss selected 
+} else if (length(inputone) == 0 & length(inputtwo) > 0 & length(inputthree) > 0) {
+  user_input <- unlist(str_split(paste(inputtwo, inputthree), "[:space:]"))
+  
+  #if all three, nycc, nysa and nyssen selected 
+} else if (length(inputone) > 0 & length(inputtwo) > 0 & length(inputthree) > 0) {
+  user_input <- unlist(str_split(paste(inputone, inputtwo, inputthree), "[:space:]"))
+  
+} else {
+  user_input
+}
+  
 }
 
 ##----FILTER FUNCTION---------------------------------------------------------
@@ -442,8 +523,8 @@ validateRequiredInput <- function(inputData, inputName) {
 # Description: Validate electeds input
 #____________________________________________________________________________
 
-validateElectedInput <- function(nyccData, nysaData, nyssenData) {
-  if((length(nyccData) == 0 & length(nysaData) == 0 & length(nyssenData) == 0)) {
+validateElectedInput <- function(inputone, inputtwo, inputthree) {
+  if((length(inputone) == 0 & length(inputtwo) == 0 & length(inputthree) == 0)) {
     shinyalert(
       title = "Error",
       text = paste("Please select at least one elected from the dropdown menus"),
@@ -615,11 +696,10 @@ customTheme <- dashboardthemes::shinyDashboardThemeDIY(
 # Description: Downloads electeds' Twitter handle data
 #____________________________________________________________________________
 
-####need to update this######
-
 electeds <- readxl::read_excel("R:/POLICY-STRATEGY-HOUSING POLICY/Data Projects/Twitter Project for IGA/NYC Electeds 2022.xlsx") %>% 
   arrange(Elected) %>% 
   na.omit(Handle)
+
 
 nyc_electeds <- electeds %>% 
   filter(Type == "nyccouncil") 
@@ -633,6 +713,22 @@ nyssen_electeds <- electeds %>%
 nyscong_electeds <- electeds %>% 
   filter(Type == "nyccongress")
 
+nyc_electeds_exec <- electeds %>% 
+  filter(Level == "City" & Type == "nycexecutive")
+
+nys_electeds_exec <- electeds %>% 
+  filter(Level == "State" & Type == "nycexecutive")
+
+fed_electeds_exec <- electeds %>% 
+  filter(Level == "Federal" & Type == "nycexecutive")
+
+nyc_agencies <- electeds %>% 
+  filter(Level == "City" & Type == "agency")
+
+fed_agencies <- electeds %>% 
+  filter(Level == "Federal" & Type == "agency")
+
+
 choices_nyc_electeds <- setNames(nyc_electeds$Handle, nyc_electeds$Elected)
 
 choices_nysa_electeds <- setNames(nysa_electeds$Handle, nysa_electeds$Elected)
@@ -641,14 +737,22 @@ choices_nyss_electeds <- setNames(nyssen_electeds$Handle, nyssen_electeds$Electe
 
 choices_fed_electeds <- setNames(nyscong_electeds$Handle, nyscong_electeds$Elected)
 
-#choices_exec_electeds <- setNames(nysexec_electeds$Handle, nysexec_electeds$Elected)
+choices_nyc_exec_electeds <- setNames(nyc_electeds_exec$Handle, nyc_electeds_exec$Elected)
+
+choices_nys_exec_electeds <- setNames(nys_electeds_exec$Handle, nys_electeds_exec$Elected)
+
+choices_fed_exec_electeds <- setNames(fed_electeds_exec$Handle, fed_electeds_exec$Elected)
+
+choices_nyc_agencies <- setNames(nyc_agencies$Handle, nyc_agencies$Elected)
+
+choices_fed_agencies <- setNames(fed_agencies$Handle, fed_agencies$Elected)
 
 ##----FONTS------------------------------------------------------------------
 #
 # Description: sets up fonts
 #____________________________________________________________________________
 
-use_pkg_gfont(font = "roboto", selector = "body")
+#use_pkg_gfont(font = "roboto", selector = "body")
 
 ##----USER INTERFACE---------------------------------------------------------
 #
@@ -721,11 +825,14 @@ ui <-
                menuSubItem(icon = icon("info"),
                            actionButton("show_users", "View instructions"))),
       
-      menuItem("Electeds Search",
-               tabName = "electeds_search_menu_item",
-               icon = icon("landmark"),
+      
+##----electeds menu items------------------------------------------------------
+
+      menuItem("City Gov Search",
+               tabName = "city_gov_menu_item",
+               icon = icon("city"),
                menuSubItem(icon = NULL,
-                           numericInput("electeds_num_tweets",
+                           numericInput("city_gov_num_tweets",
                                         "Number of Tweets to Download:",
                                         min = 100,
                                         max = 18000,
@@ -735,7 +842,7 @@ ui <-
                menuSubItem(icon = NULL,
                            shinyWidgets::pickerInput(
                            "nyc_electeds",
-                           "NYC Electeds", 
+                           "NYC Councilmembers", 
                            choices = choices_nyc_electeds,
                            options = list(`actions-box` = TRUE,
                                           `live-search` = TRUE,
@@ -743,7 +850,50 @@ ui <-
                                           `size` = 10),
                            multiple = T)),
                
+               menuSubItem(icon = NULL,
+                           shinyWidgets::pickerInput(
+                             "nyc_electeds_exec", ###nyc executives 
+                             "NYC Citywide", 
+                             choices = choices_nyc_exec_electeds,
+                             options = list(`actions-box` = TRUE,
+                                            `live-search` = TRUE,
+                                            `live-search-placeholder` = "Search name",
+                                            `size` = 10),
+                             multiple = T)),
                
+               menuSubItem(icon = NULL,
+                           shinyWidgets::pickerInput(
+                             "nyc_agencies", 
+                             "NYC Agencies", 
+                             choices = choices_nyc_agencies,
+                             options = list(`actions-box` = TRUE,
+                                            `live-search` = TRUE,
+                                            `live-search-placeholder` = "Search name",
+                                            `size` = 10),
+                             multiple = T)),
+               
+               menuSubItem(icon = NULL,
+                           textInput('filter_nyc_electeds',
+                                     'Filter:',
+                                     placeholder = "Enter keywords")),
+               
+               menuSubItem(icon = NULL,
+                           actionButton("nyc_electeds_search", "Elected Search")),
+               menuSubItem(icon = icon("info"),
+                           actionButton("show_nyc_electeds", "View instructions"))),
+
+
+      
+      menuItem("State Gov Search",
+               tabName = "state_gov_menu_item",
+               icon = icon("landmark"),
+               menuSubItem(icon = NULL,
+                           numericInput("state_gov_num_tweets",
+                                        "Number of Tweets to Download (Per Account)",
+                                        min = 100,
+                                        max = 18000,
+                                        value = 200,
+                                        step = 100)),
                menuSubItem(icon = NULL,
                            shinyWidgets::pickerInput(
                              "nysa_electeds",
@@ -768,41 +918,88 @@ ui <-
                              multiple = T,
                              )),
                
-               # menuSubItem(icon = NULL,
-               #             shinyWidgets::pickerInput(
-               #               "nyscong_electeds",
-               #               "NYC Congressmembers", 
-               #               choices= choices_fed_electeds,
-               #               options = list(`actions-box` = TRUE,
-               #                              `live-search` = TRUE,
-               #                              `dropup-auto` = F,
-               #                              `live-search-placeholder` = "Search name",
-               #                              `size` = 10),
-               #               multiple = T,
-               #             )),
-               
-               # menuSubItem(icon = NULL,
-               #             shinyWidgets::pickerInput(
-               #               "nysexec_electeds",
-               #               "Executive Leaders", 
-               #               choices= choices_exec_electeds,
-               #               options = list(`actions-box` = TRUE,
-               #                              `live-search` = TRUE,
-               #                              `dropup-auto` = F,
-               #                              `live-search-placeholder` = "Search name",
-               #                              `size` = 10),
-               #               multiple = T,
-               #             )),
-               
                menuSubItem(icon = NULL,
-                           textInput('filter_electeds',
+                           shinyWidgets::pickerInput(
+                             "nys_electeds_exec", #nys executives 
+                             "NYS Executives", 
+                             choices= choices_nys_exec_electeds,
+                             options = list(`actions-box` = TRUE,
+                                            `live-search` = TRUE,
+                                            `dropup-auto` = F,
+                                            `live-search-placeholder` = "Search name",
+                                            `size` = 10),
+                             multiple = T,
+                           )),
+               menuSubItem(icon = NULL,
+                           textInput('filter_nys_electeds',
                                      'Filter:',
                                      placeholder = "Enter keywords")),
                
                menuSubItem(icon = NULL,
-                           actionButton("electeds_search", "Elected Search")),
+                           actionButton("nys_electeds_search", "Elected Search")),
                menuSubItem(icon = icon("info"),
-                           actionButton("show_electeds", "View instructions")))
+                           actionButton("show_nys_electeds", "View instructions"))),
+
+      menuItem("Fed Gov Search",
+               tabName = "fed_gov_menu_item",
+               icon = icon("monument"),
+               menuSubItem(icon = NULL,
+                           numericInput("fed_gov_num_tweets",
+                                        "Number of Tweets to Download (Per Account)",
+                                        min = 100,
+                                        max = 18000,
+                                        value = 200,
+                                        step = 100)),
+
+               menuSubItem(icon = NULL,
+                           shinyWidgets::pickerInput(
+                             "nyscong_electeds",
+                             "Congressmembers",
+                             choices= choices_fed_electeds,
+                             options = list(`actions-box` = TRUE,
+                                            `live-search` = TRUE,
+                                            `dropup-auto` = F,
+                                            `live-search-placeholder` = "Search name",
+                                            `size` = 10),
+                             multiple = T,
+                           )),
+
+               menuSubItem(icon = NULL,
+                           shinyWidgets::pickerInput(
+                             "fed_electeds_exec",
+                             "Fed Executives",
+                             choices= choices_fed_exec_electeds,
+                             options = list(`actions-box` = TRUE,
+                                            `live-search` = TRUE,
+                                            `dropup-auto` = F,
+                                            `live-search-placeholder` = "Search name",
+                                            `size` = 10),
+                             multiple = T,
+                           )),
+               
+               
+               menuSubItem(icon = NULL,
+                           shinyWidgets::pickerInput(
+                             "fed_agencies",
+                             "Fed Agencies",
+                             choices= choices_fed_agencies,
+                             options = list(`actions-box` = TRUE,
+                                            `live-search` = TRUE,
+                                            `dropup-auto` = F,
+                                            `live-search-placeholder` = "Search name",
+                                            `size` = 10),
+                             multiple = T,
+                           )),
+
+               menuSubItem(icon = NULL,
+                           textInput('filter_fed_electeds',
+                                     'Filter:',
+                                     placeholder = "Enter keywords")),
+               
+               menuSubItem(icon = NULL,
+                           actionButton("fed_electeds_search", "Elected Search")),
+               menuSubItem(icon = icon("info"),
+                           actionButton("show_fed_electeds", "View instructions")))
     ) #sidebar menu closer
   ), #dashboardsidebar coser 
   
@@ -1077,18 +1274,18 @@ server <- function(input, output, session) {
   } #other validation result bracket
   })
   
-##----ELECTEDS SEARCH--------------------------------------------------------
+##----CITY ELECTEDS SEARCH----------------------------------------------------
 #
 # Description: sets up electeds search & filter
 #____________________________________________________________________________
   
   
   #get timeline search for electeds
-  observeEvent(input$electeds_search, {
+  observeEvent(input$nyc_electeds_search, {
     
     shinyjs::hide("help_wrapper")
    
-    num_tweets <- input$electeds_num_tweets
+    num_tweets <- input$city_gov_num_tweets
     
     #setting blank variables
     user_input <- ""
@@ -1098,7 +1295,7 @@ server <- function(input, output, session) {
     
     #if no inputs selected
     validationResult <- (
-      validateElectedInput(nyccData = input$nyc_electeds, nysaData = input$nysa_electeds, nyssenData = input$nyss_electeds)
+      validateElectedInput(input$nyc_electeds, input$nyc_electeds_exec, input$nyc_agencies)
     )
     
     
@@ -1106,48 +1303,12 @@ server <- function(input, output, session) {
     
     if (validationResult == TRUE) {
 
-    
-      #if just nyc councilmember selected
-      if (length(input$nyc_electeds) > 0 & length(input$nysa_electeds) == 0 & length(input$nyss_electeds) == 0) {
-      user_input <- input$nyc_electeds
-      
-      #if just nysa selected
-    } else if (length(input$nyc_electeds) == 0 & length(input$nysa_electeds) > 0 & length(input$nyss_electeds) == 0) {
-      user_input <- input$nysa_electeds
-      
-      #if just nys sen selected
-    } else if (length(input$nyc_electeds) == 0 & length(input$nysa_electeds) == 0 & length(input$nyss_electeds) > 0) {
-      user_input <- input$nyss_electeds 
-      
-      #if nycc and nysa selected 
-    } else if (length(input$nyc_electeds) > 0 & length(input$nysa_electeds) > 0 & length(input$nyss_electeds) == 0) {
-      #this line of code is pasting the selected nys and nyc electeds together
-      #then it is splitting those into separate strings based on whitespace
-      #finally it is converting the list into a vector
-      #so that the get_timeline() function works
-      user_input <- unlist(str_split(paste(input$nyc_electeds, input$nysa_electeds), "[:space:]"))
-      
-      #if nycc and nys sen selected 
-    } else if (length(input$nyc_electeds) > 0 & length(input$nysa_electeds) == 0 & length(input$nyss_electeds) > 0) {
-      user_input <- unlist(str_split(paste(input$nyc_electeds, input$nyss_electeds), "[:space:]"))
-      
-      #if nysa and nyss selected 
-    } else if (length(input$nyc_electeds) == 0 & length(input$nysa_electeds) > 0 & length(input$nyss_electeds) > 0) {
-      user_input <- unlist(str_split(paste(input$nysa_electeds, input$nyss_electeds), "[:space:]"))
-      
-      #if all three, nycc, nysa and nyssen selected 
-    } else if (length(input$nyc_electeds) > 0 & length(input$nysa_electeds) > 0 & length(input$nyss_electeds) > 0) {
-      user_input <- unlist(str_split(paste(input$nyc_electeds, input$nysa_electeds, input$nyss_electeds), "[:space:]"))
-      
-    } else {
-      user_input
-    }
+      user_input <- electeds_search_fun(user_input, input$nyc_electeds, input$nyc_electeds_exec, input$nyc_agencies)    
  
-    
     # testing if there is a filter
-    if (input$filter_electeds != "") {
+    if (input$filter_nyc_electeds != "") {
       filter_flag <- TRUE
-      filter_input <- input$filter_electeds
+      filter_input <- input$filter_nyc_electeds
     } else {
     }
     
@@ -1186,7 +1347,153 @@ server <- function(input, output, session) {
     }#other validation result bracket 
   })
   
+##----STATE ELECTEDS SEARCH----------------------------------------------------
+#
+# Description: sets up electeds search & filter
+#____________________________________________________________________________
+  
+  
+  #get timeline search for electeds
+  observeEvent(input$nys_electeds_search, {
+    
+    shinyjs::hide("help_wrapper")
+    
+    num_tweets <- input$state_gov_num_tweets
+    
+    #setting blank variables
+    user_input <- ""
+    filter_input <- ""
+    filter_flag <- FALSE
+    df <- data.frame()
+    
+    #if no inputs selected
+    validationResult <- (
+      validateElectedInput(input$nysa_electeds, input$nyss_electeds, input$nys_electeds_exec)
+    )
+    
+    
+    #check validation result
+    
+    if (validationResult == TRUE) {
+      
+      user_input <- electeds_search_fun(user_input, input$nysa_electeds, input$nyss_electeds, input$nys_electeds_exec)   
+      
+      # testing if there is a filter
+      if (input$filter_nys_electeds != "") {
+        filter_flag <- TRUE
+        filter_input <- input$filter_nys_electeds
+      } else {
+      }
+      
+      #validating filter 
+      validationInputResult <- (
+        validateFilterInput(filter = filter_flag, inputData = filter_input, inputName = "filter")
+      )
+      
+      if (validationInputResult == TRUE) {
+        
+        #filter function
+        df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
+        
+        #users with highest engagement
+        output$pop_users <- most_eng_users(df)
+        
+        #most liked tweet
+        output$most_liked <- most_liked_func(df)
+        
+        #most retweeted tweet
+        output$most_rt <- most_rt_func(df)
+        
+        #tweet freq chart
+        output$tweet_freq_chart <- tweet_freq(df)
+        
+        #adding the results of the search_tweets to the reactive value
+        output$tweet_table <- tweet_table_gen(df)
+        
+        shinyjs::show("tweet_wrapper")
+        shinyjs::show("user_wrapper")
+        shinyjs::show("liked_wrapper")
+        shinyjs::show("rt_wrapper")
+        shinyjs::show("tweet_freq_wrapper")
+        
+      }#validation result bracket 
+    }#other validation result bracket 
+  })
+  
 
+  ##----FED ELECTEDS SEARCH----------------------------------------------------
+  #
+  # Description: sets up electeds search & filter
+  #____________________________________________________________________________
+  
+  
+  #get timeline search for electeds
+  observeEvent(input$fed_electeds_search, {
+    
+    shinyjs::hide("help_wrapper")
+    
+    num_tweets <- input$fed_gov_num_tweets
+    
+    #setting blank variables
+    user_input <- ""
+    filter_input <- ""
+    filter_flag <- FALSE
+    df <- data.frame()
+    
+    #if no inputs selected
+    validationResult <- (
+      validateElectedInput(input$nyscong_electeds, input$fed_electeds_exec, input$fed_agencies)
+    )
+    
+    
+    #check validation result
+    
+    if (validationResult == TRUE) {
+      
+      user_input <- electeds_search_fun(user_input, input$nyscong_electeds, input$fed_electeds_exec, input$fed_agencies)   
+      
+      # testing if there is a filter
+      if (input$filter_fed_electeds != "") {
+        filter_flag <- TRUE
+        filter_input <- input$filter_fed_electeds
+      } else {
+      }
+      
+      #validating filter 
+      validationInputResult <- (
+        validateFilterInput(filter = filter_flag, inputData = filter_input, inputName = "filter")
+      )
+      
+      if (validationInputResult == TRUE) {
+        
+        #filter function
+        df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
+        
+        #users with highest engagement
+        output$pop_users <- most_eng_users(df)
+        
+        #most liked tweet
+        output$most_liked <- most_liked_func(df)
+        
+        #most retweeted tweet
+        output$most_rt <- most_rt_func(df)
+        
+        #tweet freq chart
+        output$tweet_freq_chart <- tweet_freq(df)
+        
+        #adding the results of the search_tweets to the reactive value
+        output$tweet_table <- tweet_table_gen(df)
+        
+        shinyjs::show("tweet_wrapper")
+        shinyjs::show("user_wrapper")
+        shinyjs::show("liked_wrapper")
+        shinyjs::show("rt_wrapper")
+        shinyjs::show("tweet_freq_wrapper")
+        
+      }#validation result bracket 
+    }#other validation result bracket 
+  })
+  
 ##----INSTRUCTIONS MODALS----------------------------------------------------
 #
 # Description: sets up help page
@@ -1229,7 +1536,7 @@ server <- function(input, output, session) {
   observeEvent(input$show_users, {
     showModal(modalDialog(
       title = "Users Search Instructions",
-      div(tags$b("Number of Tweets to Download")), 
+      div(tags$b("Number of Tweets to Download (Per Account)")), 
       div("Minimum number of tweets returned is 100. The maximum is 18,000. The number of tweets is incremented by 100."),
       br(),
       div(tags$b("Users Search")), 
@@ -1245,10 +1552,44 @@ server <- function(input, output, session) {
     ))
   })
   
-  observeEvent(input$show_electeds, {
+  observeEvent(input$show_nyc_electeds, {
     showModal(modalDialog(
       title = "Electeds Search Instructions",
-      div(tags$b("Number of Tweets to Download")), 
+      div(tags$b("Number of Tweets to Download (Per Account)")), 
+      div("Minimum number of tweets returned is 100. The maximum is 18,000. The number of tweets is incremented by 100."),
+      br(),
+      div(tags$b("Electeds Search")), 
+      div("Select or search for any elected official's name. Selection boxes can be used together or separately."),
+      br(),
+      div(tags$b("Filter")), 
+      div("Entering keywords here will filter the user search to results that include any of the keywords and in
+          any order."),
+      easyClose = TRUE,
+      footer = NULL
+    ))
+  })
+  
+  observeEvent(input$show_nys_electeds, {
+    showModal(modalDialog(
+      title = "Electeds Search Instructions",
+      div(tags$b("Number of Tweets to Download (Per Account)")), 
+      div("Minimum number of tweets returned is 100. The maximum is 18,000. The number of tweets is incremented by 100."),
+      br(),
+      div(tags$b("Electeds Search")), 
+      div("Select or search for any elected official's name. Selection boxes can be used together or separately."),
+      br(),
+      div(tags$b("Filter")), 
+      div("Entering keywords here will filter the user search to results that include any of the keywords and in
+          any order."),
+      easyClose = TRUE,
+      footer = NULL
+    ))
+  })
+  
+  observeEvent(input$show_fed_electeds, {
+    showModal(modalDialog(
+      title = "Electeds Search Instructions",
+      div(tags$b("Number of Tweets to Download (Per Account)")), 
       div("Minimum number of tweets returned is 100. The maximum is 18,000. The number of tweets is incremented by 100."),
       br(),
       div(tags$b("Electeds Search")), 
