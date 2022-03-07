@@ -8,6 +8,7 @@ library(lubridate)
 library(shinydashboard)
 library(dashboardthemes)
 library(shinyalert)
+library(projmgr)
 
 ##----TWITTER AUTHORIZATION TOKEN--------------------------------------------
 #
@@ -40,6 +41,7 @@ if (TWEETS_MANAGE_UPDATES) {
     }
   }
 }
+
 
 ##----TWEET CLEANER FUNCTION-------------------------------------------------
 #
@@ -234,7 +236,7 @@ filter_func <- function(df, filter_flag, filter_input, user_input, num_tweets) {
   # checking if filter input has multiple strings
   if (filter_flag == TRUE & str_detect(filter_input, "[:space:]")) {
     filter_input <- unlist(str_split(filter_input, "[:space:]"))
-    df <- get_timeline(user_input, n = num_tweets)
+    df <- get_timeline(user_input, n = num_tweets, token = bearer_token())
     if (nrow(df) > 0) {
     df <- df %>%
       filter(grepl(paste(filter_input, collapse = "|"), text, ignore.case = TRUE)) %>%
@@ -244,7 +246,7 @@ filter_func <- function(df, filter_flag, filter_input, user_input, num_tweets) {
     }
   # checking if filter exists and is not multiple strings
     } else if (filter_flag == TRUE & !str_detect(filter_input, "[:space:]")) {
-      df <- get_timeline(user_input, n = num_tweets)
+      df <- get_timeline(user_input, n = num_tweets, token = bearer_token())
       if (nrow(df) >0) {
         df <- df %>%
           filter(grepl(filter_input, text, ignore.case = TRUE)) %>%
@@ -254,7 +256,7 @@ filter_func <- function(df, filter_flag, filter_input, user_input, num_tweets) {
       }
   #if no filter, just do standard search
       } else {
-        df <- get_timeline(user_input, n = num_tweets)
+        df <- get_timeline(user_input, n = num_tweets, token = bearer_token())
         if (nrow(df) > 1) {
           df <- df %>%
             tweet_cleaner()
@@ -479,7 +481,6 @@ plot<- ggplot(df, aes(x = tweet_date, y = count)) +
 
 }
 
-
 ##----VALIDATION FUNCTION----------------------------------------------------
 #
 # Description: Validate user input to not be empty & have 1 alpha
@@ -511,7 +512,7 @@ validateRequiredInput <- function(inputData, inputName) {
   
   shinyalert(
     title = "Success",
-    text = paste("Successful search! Please wait up to 10 seconds if a large number of tweets were requested."),
+    text = paste("Successful search! Please wait up to 1 min if a large number of tweets were requested."),
     type = "success"
   )
   
@@ -536,7 +537,7 @@ validateElectedInput <- function(inputone, inputtwo, inputthree) {
   
   shinyalert(
     title = "Success",
-    text = paste("Successful search! Please wait up to 10 seconds if a large number of tweets were requested."),
+    text = paste("Successful search! Please wait up to 1 min if a large number of tweets were requested."),
     type = "success"
   )
   
@@ -833,7 +834,7 @@ ui <-
                icon = icon("city"),
                menuSubItem(icon = NULL,
                            numericInput("city_gov_num_tweets",
-                                        "Number of Tweets to Download:",
+                                        "Number of Tweets to Download (Per Account):",
                                         min = 100,
                                         max = 18000,
                                         value = 200,
@@ -878,7 +879,7 @@ ui <-
                                      placeholder = "Enter keywords")),
                
                menuSubItem(icon = NULL,
-                           actionButton("nyc_electeds_search", "Elected Search")),
+                           actionButton("nyc_electeds_search", "City Gov Search")),
                menuSubItem(icon = icon("info"),
                            actionButton("show_nyc_electeds", "View instructions"))),
 
@@ -936,7 +937,7 @@ ui <-
                                      placeholder = "Enter keywords")),
                
                menuSubItem(icon = NULL,
-                           actionButton("nys_electeds_search", "Elected Search")),
+                           actionButton("nys_electeds_search", "State Gov Search")),
                menuSubItem(icon = icon("info"),
                            actionButton("show_nys_electeds", "View instructions"))),
 
@@ -997,7 +998,7 @@ ui <-
                                      placeholder = "Enter keywords")),
                
                menuSubItem(icon = NULL,
-                           actionButton("fed_electeds_search", "Elected Search")),
+                           actionButton("fed_electeds_search", "Fed Gov Search")),
                menuSubItem(icon = icon("info"),
                            actionButton("show_fed_electeds", "View instructions")))
     ) #sidebar menu closer
@@ -1079,7 +1080,9 @@ ui <-
    ), #dashboard page 
   
 
-
+# tags$script('Shiny.addCustomMessageHandler("message", function(message) {
+#             alert(message); 
+# });'),
 
 tags$footer(img(src="https://housingconnect.nyc.gov/PublicWeb/assets/images/hpd-logo@2x.png", height = "55px"), 
             img(src="https://raw.githubusercontent.com/wshenyc/Twitter/main/fedex%20day.png", height = "55px"),
@@ -1108,23 +1111,23 @@ align = "right", style = "
 server <- function(input, output, session) {
   
   # the modal dialog upon start up
-  query_modal <- modalDialog(
+
+  query_modal <- shinyalert(
     title = "Introduction",
-    div(tags$b("General overview")), 
-    br(),
-    div("Twitter Search is an app that allows users to:"),
-    div(tags$ul(
-          tags$li("Search most recent Tweets containing specified key words from the last 6-9 days."), 
-          tags$li("Return timelines for specified Twitter users"), 
-          tags$li("Filter timeline results by specified key words")
-        )),
-    br(),
-    div("To start, select one of the tabs on the left."),
-    br(),
-    easyClose = T,
-    footer = modalButton("Close")
-    )
-  
+    text = 
+        '<div align = "left">Twitter Search is an app that allows users to:</div>
+        </br>
+        <div align = "left"><ul>
+              <li>Search most recent Tweets containing specified key words from the last 6-9 days.</li>
+              <li>Return timelines for specified Twitter users</li>
+              <li>Filter timeline results by specified key words</li>
+            <ul></div>
+        </br>
+        <div align = "left">To start, select one of the tabs on the left.</div>', 
+    html = TRUE,
+    type = "info",
+    closeOnClickOutside = TRUE
+  )
   
   # Show the model on start up ...
   showModal(query_modal)
@@ -1137,17 +1140,46 @@ server <- function(input, output, session) {
   
   observeEvent(input$keyword_search_button, {
     
+    #checking rate limit 
+    token <- get_token()
+    lim <- rate_limit(token, "search_tweets") 
+    
+    if(lim$remaining == 0){
+      shinyjs::disable("keyword_search_button")
+      shinyjs::delay(difftime(Sys.time(), lim$reset_at, units = "secs") * 1000, shinyjs::enable("keyword_search_button"))
+      time <- difftime(Sys.time(), lim$reset_at, units = "mins")
+      time <- paste(abs(ceiling(time)),"mins")
+      showModal(
+        modalDialog(
+          title = "Rate limit hit!",
+          "You have hit the rate limit, wait for",
+          time 
+          , "to make another search.",
+          easyClose = TRUE,
+          footer = NULL
+        )
+      )
+    } 
+    
+        
     user_input <- input$search_terms
     
     #require user_input to not be empty and have at least one letter
- 
+    
+    if(lim$remaining != 0) {
+    
     validationResult <- (
       validateRequiredInput(inputData = user_input, inputName = "keywords search")
     )
     
     #check validation result
     
+    if(lim$remaining != 0) {
+    
     if (validationResult == TRUE) {
+    
+      #disable submit button after successful search 
+      shinyjs::disable("keyword_search_button")  
     
     #checking if the verified check box was selected and returning only verified results if true
     if (input$verified & !input$org_only) {
@@ -1163,10 +1195,12 @@ server <- function(input, output, session) {
       user_input
     }
     
-    
-    
+   
     #setting df variable to the results of search_tweets
-    df <- search_tweets(user_input, n = input$keywords_num_tweets) 
+    df <- search_tweets(user_input, n = input$keywords_num_tweets, token = bearer_token()) 
+    
+    shinyjs::enable("keyword_search_button")
+  
     
     if(nrow(df) > 0) {
       df <- df %>% 
@@ -1197,6 +1231,8 @@ server <- function(input, output, session) {
     shinyjs::show("liked_wrapper")
     shinyjs::show("rt_wrapper")
     shinyjs::show("tweet_freq_wrapper")
+    } #validation result
+    }
     }
   })
   
@@ -1212,13 +1248,38 @@ server <- function(input, output, session) {
     user_input <- input$user_search
     num_tweets <- input$user_num_tweets
     
+    #checking rate limit 
+    token <- get_token()
+    lim <- rate_limit(token, "get_timeline") 
+    
+    if(lim$remaining == 0){
+      shinyjs::disable("user_search_button")
+      shinyjs::delay(difftime(Sys.time(), lim$reset_at, units = "secs") * 1000, shinyjs::enable("user_search_button"))
+      time <- difftime(Sys.time(), lim$reset_at, units = "mins")
+      time <- paste(abs(ceiling(time)),"mins")
+      showModal(
+        modalDialog(
+          title = "Rate limit hit!",
+          "You have hit the rate limit, wait for",
+          time 
+          , "to make another search.",
+          easyClose = TRUE,
+          footer = NULL
+        )
+      )
+    } 
+    
+    
     #validate search results 
     validationResult <- (
       validateRequiredInput(inputData = user_input, inputName = "users search")
     )
     
     if (validationResult == TRUE) {
-    
+      
+      #disable submit button after successful search 
+      shinyjs::disable("user_search_button")
+      
     #blank vars
     filter_flag <- FALSE
     filter_input <- ""
@@ -1248,6 +1309,9 @@ server <- function(input, output, session) {
     
     #filter function
     df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
+    
+    #enable submit button after table generates 
+    shinyjs::enable("user_search_button")
     
     #users with highest engagement
     output$pop_users <- most_eng_users(df)
@@ -1282,8 +1346,6 @@ server <- function(input, output, session) {
   
   #get timeline search for electeds
   observeEvent(input$nyc_electeds_search, {
-    
-    shinyjs::hide("help_wrapper")
    
     num_tweets <- input$city_gov_num_tweets
     
@@ -1292,6 +1354,28 @@ server <- function(input, output, session) {
     filter_input <- ""
     filter_flag <- FALSE
     df <- data.frame()
+    
+    #checking rate limit 
+    token <- get_token()
+    lim <- rate_limit(token, "search_tweets") 
+    
+    if(lim$remaining == 0){
+      shinyjs::disable("nyc_electeds_search")
+      shinyjs::delay(difftime(Sys.time(), lim$reset_at, units = "secs") * 1000, shinyjs::enable("nyc_electeds_search"))
+      time <- difftime(Sys.time(), lim$reset_at, units = "mins")
+      time <- paste(abs(ceiling(time)),"mins")
+      showModal(
+        modalDialog(
+          title = "Rate limit hit!",
+          "You have hit the rate limit, wait for",
+          time 
+          , "to make another search.",
+          easyClose = TRUE,
+          footer = NULL
+        )
+      )
+    } 
+    
     
     #if no inputs selected
     validationResult <- (
@@ -1302,6 +1386,9 @@ server <- function(input, output, session) {
     #check validation result
     
     if (validationResult == TRUE) {
+      
+      #enable submit button after table generates 
+      shinyjs::disable("nyc_electeds_search")
 
       user_input <- electeds_search_fun(user_input, input$nyc_electeds, input$nyc_electeds_exec, input$nyc_agencies)    
  
@@ -1321,6 +1408,9 @@ server <- function(input, output, session) {
       
     #filter function
     df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
+    
+    #enable submit button after table generates 
+    shinyjs::enable("nyc_electeds_search")
     
     #users with highest engagement
     output$pop_users <- most_eng_users(df)
@@ -1356,8 +1446,6 @@ server <- function(input, output, session) {
   #get timeline search for electeds
   observeEvent(input$nys_electeds_search, {
     
-    shinyjs::hide("help_wrapper")
-    
     num_tweets <- input$state_gov_num_tweets
     
     #setting blank variables
@@ -1365,6 +1453,27 @@ server <- function(input, output, session) {
     filter_input <- ""
     filter_flag <- FALSE
     df <- data.frame()
+    
+    #checking rate limit 
+    token <- get_token()
+    lim <- rate_limit(token, "search_tweets") 
+    
+    if(lim$remaining == 0){
+      shinyjs::disable("nys_electeds_search")
+      shinyjs::delay(difftime(Sys.time(), lim$reset_at, units = "secs") * 1000, shinyjs::enable("nys_electeds_search"))
+      time <- difftime(Sys.time(), lim$reset_at, units = "mins")
+      time <- paste(abs(ceiling(time)),"mins")
+      showModal(
+        modalDialog(
+          title = "Rate limit hit!",
+          "You have hit the rate limit, wait for",
+          time 
+          , "to make another search.",
+          easyClose = TRUE,
+          footer = NULL
+        )
+      )
+    } 
     
     #if no inputs selected
     validationResult <- (
@@ -1375,6 +1484,9 @@ server <- function(input, output, session) {
     #check validation result
     
     if (validationResult == TRUE) {
+      
+      #disable submit button after table generates 
+      shinyjs::disable("nys_electeds_search")
       
       user_input <- electeds_search_fun(user_input, input$nysa_electeds, input$nyss_electeds, input$nys_electeds_exec)   
       
@@ -1394,6 +1506,9 @@ server <- function(input, output, session) {
         
         #filter function
         df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
+        
+        #enable submit button after table generates 
+        shinyjs::enable("nys_electeds_search")
         
         #users with highest engagement
         output$pop_users <- most_eng_users(df)
@@ -1430,8 +1545,6 @@ server <- function(input, output, session) {
   #get timeline search for electeds
   observeEvent(input$fed_electeds_search, {
     
-    shinyjs::hide("help_wrapper")
-    
     num_tweets <- input$fed_gov_num_tweets
     
     #setting blank variables
@@ -1439,6 +1552,28 @@ server <- function(input, output, session) {
     filter_input <- ""
     filter_flag <- FALSE
     df <- data.frame()
+    
+    #checking rate limit 
+    token <- get_token()
+    lim <- rate_limit(token, "search_tweets") 
+    
+    if(lim$remaining == 0){
+      shinyjs::disable("fed_electeds_search")
+      shinyjs::delay(difftime(Sys.time(), lim$reset_at, units = "secs") * 1000, shinyjs::enable("fed_electeds_search"))
+      time <- difftime(Sys.time(), lim$reset_at, units = "mins")
+      time <- paste(abs(ceiling(time)),"mins")
+      showModal(
+        modalDialog(
+          title = "Rate limit hit!",
+          "You have hit the rate limit, wait for",
+          time 
+          , "to make another search.",
+          easyClose = TRUE,
+          footer = NULL
+        )
+      )
+    } 
+    
     
     #if no inputs selected
     validationResult <- (
@@ -1449,6 +1584,9 @@ server <- function(input, output, session) {
     #check validation result
     
     if (validationResult == TRUE) {
+      
+      #enable submit button after table generates 
+      shinyjs::disable("fed_electeds_search")
       
       user_input <- electeds_search_fun(user_input, input$nyscong_electeds, input$fed_electeds_exec, input$fed_agencies)   
       
@@ -1468,6 +1606,9 @@ server <- function(input, output, session) {
         
         #filter function
         df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
+        
+        #enable submit button after table generates 
+        shinyjs::enable("fed_electeds_search")
         
         #users with highest engagement
         output$pop_users <- most_eng_users(df)
