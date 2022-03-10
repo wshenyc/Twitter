@@ -813,6 +813,22 @@ choices_fed_agencies <- setNames(fed_agencies$Handle, fed_agencies$Elected)
 cbo_twitter <- readxl::read_excel("R:/POLICY-STRATEGY-HOUSING POLICY/Data Projects/Twitter Project for IGA/advocacy groups.xlsx") %>% 
   arrange(Name)
 
+local_groups <- cbo_twitter %>% 
+  filter(Level == "local") 
+
+national_groups <- cbo_twitter %>% 
+  filter(Level == "national")
+
+reporters <- cbo_twitter %>% 
+  filter(Level == "reporter")
+
+choices_local_groups <- setNames(local_groups$Handle, local_groups$Name)
+
+choices_national_groups <- setNames(national_groups$Handle, national_groups$Name)
+
+choices_reporters <- setNames(reporters$Handle, reporters$Name)
+
+
 ##----USER INTERFACE---------------------------------------------------------
 #
 # Description: sets up UI
@@ -1058,7 +1074,69 @@ ui <-
                menuSubItem(icon = NULL,
                            actionButton("fed_electeds_search", "Fed Gov Search")),
                menuSubItem(icon = icon("info"),
-                           actionButton("show_fed_electeds", "View instructions")))
+                           actionButton("show_fed_electeds", "View instructions"))),
+
+menuItem("Advocacy Groups",
+         tabName = "advocacy_menu_item",
+         icon = icon("monument"),
+         menuSubItem(icon = NULL,
+                     numericInput("advocacy_num_tweets",
+                                  "Number of Tweets to Download (Per Account)",
+                                  min = 100,
+                                  max = 18000,
+                                  value = 200,
+                                  step = 100)),
+         
+         menuSubItem(icon = NULL,
+                     shinyWidgets::pickerInput(
+                       "local_groups",
+                       "Local Groups",
+                       choices= choices_local_groups,
+                       options = list(`actions-box` = TRUE,
+                                      `live-search` = TRUE,
+                                      `dropup-auto` = F,
+                                      `live-search-placeholder` = "Search name",
+                                      `size` = 10),
+                       multiple = T,
+                     )),
+         
+         menuSubItem(icon = NULL,
+                     shinyWidgets::pickerInput(
+                       "national_groups",
+                       "National Groups",
+                       choices= choices_national_groups,
+                       options = list(`actions-box` = TRUE,
+                                      `live-search` = TRUE,
+                                      `dropup-auto` = F,
+                                      `live-search-placeholder` = "Search name",
+                                      `size` = 10),
+                       multiple = T,
+                     )),
+         
+         
+         menuSubItem(icon = NULL,
+                     shinyWidgets::pickerInput(
+                       "reporters",
+                       "Reporters",
+                       choices= choices_reporters,
+                       options = list(`actions-box` = TRUE,
+                                      `live-search` = TRUE,
+                                      `dropup-auto` = F,
+                                      `live-search-placeholder` = "Search name",
+                                      `size` = 10),
+                       multiple = T,
+                     )),
+         
+         menuSubItem(icon = NULL,
+                     textInput('filter_advocacy_groups',
+                               'Filter:',
+                               placeholder = "Enter keywords")),
+         
+         menuSubItem(icon = NULL,
+                     actionButton("advocacy_search", "Advocacy Search")),
+         menuSubItem(icon = icon("info"),
+                     actionButton("show_advocacy_groups", "View instructions")))
+
     ) #sidebar menu closer
   ), #dashboardsidebar coser 
   
@@ -1683,6 +1761,105 @@ server <- function(input, output, session) {
         
         #enable submit button after table generates 
         shinyjs::enable("fed_electeds_search")
+        
+        #users with highest engagement
+        output$pop_users <- most_eng_users(df)
+        
+        #most liked tweet
+        output$most_liked <- most_liked_func(df)
+        
+        #most retweeted tweet
+        output$most_rt <- most_rt_func(df)
+        
+        #tweet freq chart
+        output$tweet_freq_chart <- tweet_freq(df)
+        
+        #adding the results of the search_tweets to the reactive value
+        output$tweet_table <- tweet_table_gen(df)
+        
+        shinyjs::show("tweet_wrapper")
+        shinyjs::show("user_wrapper")
+        shinyjs::show("liked_wrapper")
+        shinyjs::show("rt_wrapper")
+        shinyjs::show("tweet_freq_wrapper")
+        
+      }#validation result bracket 
+    }#other validation result bracket 
+  })
+
+  ##----ADVOCACY GROUP SEARCH---------------------------------------------------
+  #
+  # Description: sets up advocacy group search & filter
+  #____________________________________________________________________________
+  
+  
+  #get timeline search for electeds
+  observeEvent(input$advocacy_search, {
+    
+    num_tweets <- input$advocacy_num_tweets
+    
+    #setting blank variables
+    user_input <- ""
+    filter_input <- ""
+    filter_flag <- FALSE
+    df <- data.frame()
+    
+    #checking rate limit 
+    token <- bearer_token()
+    lim <- rate_limit(token, "get_timeline") 
+    
+    if(lim$remaining == 1){
+      shinyjs::disable("advocacy_search")
+      shinyjs::delay(difftime(Sys.time(), lim$reset_at, units = "secs") * 1000, shinyjs::enable("advocacy_search"))
+      time <- difftime(Sys.time(), lim$reset_at, units = "mins")
+      time <- paste(abs(ceiling(time)),"mins")
+      showModal(
+        modalDialog(
+          title = "Rate limit hit!",
+          "You have hit the rate limit, wait for",
+          time 
+          , "to make another search.",
+          easyClose = TRUE,
+          footer = NULL
+        )
+      )
+    } 
+    
+    
+    #if no inputs selected
+    validationResult <- (
+      validateElectedInput(input$local_groups, input$national_groups, input$reporters)
+    )
+    
+    
+    #check validation result
+    
+    if (validationResult == TRUE) {
+      
+      #enable submit button after table generates 
+      shinyjs::disable("advocacy_search")
+      
+      user_input <- electeds_search_fun(user_input, input$national_groups, input$local_groups, input$reporters)   
+      
+      # testing if there is a filter
+      if (input$filter_advocacy_groups != "") {
+        filter_flag <- TRUE
+        filter_input <- input$filter_advocacy_groups
+      } else {
+      }
+      
+      #validating filter 
+      validationInputResult <- (
+        validateFilterInput(filter = filter_flag, inputData = filter_input, inputName = "filter")
+      )
+      
+      if (validationInputResult == TRUE) {
+        
+        #filter function
+        df <- filter_func(df, filter_flag, filter_input, user_input, num_tweets)
+        
+        #enable submit button after table generates 
+        shinyjs::enable("advocacy_search")
         
         #users with highest engagement
         output$pop_users <- most_eng_users(df)
