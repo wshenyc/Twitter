@@ -2,18 +2,18 @@ library(shiny)
 library(rtweet)
 library(tidyverse)
 library(DT)
-library(gfonts)
 library(glue)
 library(lubridate)
 library(shinydashboard)
 library(dashboardthemes)
 library(shinyalert)
-library(projmgr)
+library(tidytext)
+# library(syuzhet)
 
 ##----TWITTER AUTHORIZATION TOKEN--------------------------------------------
 #
-# Description: The section checks that the Twitter auth token is available and 
-# allows users to use Winnie's twitter auth code to call the Twitter API. 
+# Description: The section checks that the Twitter auth token is available and
+# allows users to use Winnie's twitter auth code to call the Twitter API.
 # This section will be updated with a developer API, which is pending approval.
 #
 # Source: https://github.com/gadenbuie/tweet-conf-dash
@@ -481,6 +481,63 @@ plot<- ggplot(df, aes(x = tweet_date, y = count)) +
 
 }
 
+# ##----SENTIMENT ANALYSIS----------------------------------------------
+# #
+# # Description: Find users with highest level of engagement.
+# # Engagement score is calculated as: Retweets*2 + Likes
+# #____________________________________________________________________________
+# sent_analysis <- function(text) {
+# 
+# df <- data.frame()
+# df <- data.frame(text = c(text))
+#   
+# ## clean up the text a bit (rm mentions and links)
+# df$text <- gsub(
+#   "^RT:?\\s{0,}|#|@\\S+|https?[[:graph:]]+", "", text)
+# ## convert to lower case
+# df$text <- tolower(df$text)
+# ## trim extra white space
+# df$text <- gsub("^\\s{1,}|\\s{1,}$", "", df$text)
+# df$text <- gsub("\\s{2,}", " ", df$text)
+# 
+# ## estimate pos/neg sentiment for each tweet
+# df$sentiment <- syuzhet::get_sentiment(df$text, "syuzhet")
+# 
+# ## write function to round time into rounded var
+# round_time <- function(x, sec) {
+#   as.POSIXct(hms::hms(as.numeric(x) %/% sec * sec))
+# }
+# 
+# ## plot by specified time interval (1-hours)
+# df <- df %>%
+#   mutate(time = round_time(created_at, 60 * 60)) %>%
+#   group_by(time) %>%
+#   summarise(sentiment = mean(sentiment, na.rm = TRUE)) %>%
+#   mutate(valence = ifelse(sentiment > 0L, "Positive", "Negative")) %>%
+#   ggplot(aes(x = time, y = sentiment)) +
+#   geom_smooth(method = "loess", span = .1,
+#               colour = "#aa11aadd", fill = "#bbbbbb11") +
+#   geom_point(aes(fill = valence, colour = valence), 
+#              shape = 21, alpha = .6, size = 3.5) +
+#   theme_minimal(base_size = 15, base_family = "Roboto Condensed") +
+#   theme(legend.position = "none",
+#         axis.text = element_text(colour = "#222222"),
+#         plot.title = element_text(size = rel(1.7), face = "bold"),
+#         plot.subtitle = element_text(size = rel(1.3)),
+#         plot.caption = element_text(colour = "#444444")) +
+#   scale_fill_manual(
+#     values = c(Positive = "#2244ee", Negative = "#dd2222")) +
+#   scale_colour_manual(
+#     values = c(Positive = "#001155", Negative = "#550000")) +
+#   labs(x = NULL, y = NULL,
+#        title = "Sentiment (valence) of rstudio::conf tweets over time",
+#        subtitle = "Mean sentiment of tweets aggregated in one-hour intervals",
+#        caption = "\nSource: Data gathered using rtweet. Sentiment analysis done using syuzhet")
+# 
+# renderPlot(df)
+# 
+# }
+
 ##----VALIDATION FUNCTION----------------------------------------------------
 #
 # Description: Validate user input to not be empty & have 1 alpha
@@ -748,12 +805,13 @@ choices_nyc_agencies <- setNames(nyc_agencies$Handle, nyc_agencies$Elected)
 
 choices_fed_agencies <- setNames(fed_agencies$Handle, fed_agencies$Elected)
 
-##----FONTS------------------------------------------------------------------
-#
-# Description: sets up fonts
+##----COMMUNITY GROUP TWITTERS-----------------------------------------------
+
+# Description: Downloads electeds' Twitter handle data
 #____________________________________________________________________________
 
-#use_pkg_gfont(font = "roboto", selector = "body")
+cbo_twitter <- readxl::read_excel("R:/POLICY-STRATEGY-HOUSING POLICY/Data Projects/Twitter Project for IGA/advocacy groups.xlsx") %>% 
+  arrange(Name)
 
 ##----USER INTERFACE---------------------------------------------------------
 #
@@ -1074,7 +1132,15 @@ ui <-
                                 div(plotOutput("tweet_freq_chart"), width = "100%")
                               ))))
     ) #2nd fluid row closer 
-    
+    , fluidRow(
+      shinyjs::hidden(div(id = "sent_analysis_wrapper",
+                          shinydashboard::box(
+                            width = 5,
+                            title = "Sentiment Analysis",
+                            status = "primary",
+                            div(plotOutput("sent_analysis_chart"), width = "100%")
+                          )))
+    )
     
     ) #dashboard body
    ), #dashboard page 
@@ -1141,7 +1207,7 @@ server <- function(input, output, session) {
   observeEvent(input$keyword_search_button, {
     
     #checking rate limit 
-    token <- get_token()
+    token <- bearer_token()
     lim <- rate_limit(token, "search_tweets") 
     
     if(lim$remaining == 0){
@@ -1226,11 +1292,15 @@ server <- function(input, output, session) {
     #adding the results of the search_tweets to the reactive value 
     output$tweet_table <- tweet_table_gen(df)
     
+    #sent analysis
+    # output$sent_analysis_chart <- sent_analysis(df$`Tweet`)
+    
     shinyjs::show("tweet_wrapper")
     shinyjs::show("user_wrapper")
     shinyjs::show("liked_wrapper")
     shinyjs::show("rt_wrapper")
     shinyjs::show("tweet_freq_wrapper")
+    # shinyjs::show("sent_analysis_wrapper")
     } #validation result
     }
     }
@@ -1249,10 +1319,11 @@ server <- function(input, output, session) {
     num_tweets <- input$user_num_tweets
     
     #checking rate limit 
-    token <- get_token()
+    token <- bearer_token()
     lim <- rate_limit(token, "get_timeline") 
     
-    if(lim$remaining == 0){
+    if (nrow(lim) == 0) {
+    #if(lim$remaining == 0){
       shinyjs::disable("user_search_button")
       shinyjs::delay(difftime(Sys.time(), lim$reset_at, units = "secs") * 1000, shinyjs::enable("user_search_button"))
       time <- difftime(Sys.time(), lim$reset_at, units = "mins")
@@ -1356,8 +1427,8 @@ server <- function(input, output, session) {
     df <- data.frame()
     
     #checking rate limit 
-    token <- get_token()
-    lim <- rate_limit(token, "search_tweets") 
+    token <- bearer_token()
+    lim <- rate_limit(token, "get_timeline") 
     
     if(lim$remaining == 0){
       shinyjs::disable("nyc_electeds_search")
@@ -1455,8 +1526,11 @@ server <- function(input, output, session) {
     df <- data.frame()
     
     #checking rate limit 
-    token <- get_token()
-    lim <- rate_limit(token, "search_tweets") 
+    token <- bearer_token()
+    lim <- rate_limit(token, "get_timeline") 
+    
+    print(lim)
+    print(lim$remaining)
     
     if(lim$remaining == 0){
       shinyjs::disable("nys_electeds_search")
@@ -1554,8 +1628,8 @@ server <- function(input, output, session) {
     df <- data.frame()
     
     #checking rate limit 
-    token <- get_token()
-    lim <- rate_limit(token, "search_tweets") 
+    token <- bearer_token()
+    lim <- rate_limit(token, "get_timeline") 
     
     if(lim$remaining == 0){
       shinyjs::disable("fed_electeds_search")
