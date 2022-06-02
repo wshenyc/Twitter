@@ -8,6 +8,7 @@ library(shinydashboard)
 library(dashboardthemes)
 library(shinyalert)
 library(tidytext)
+library(echarts4r)
 # library(syuzhet)
 
 
@@ -71,7 +72,7 @@ tweet_cleaner <- function (df) {
                                  "Yes",
                                  "No"),
                created_at = as.Date(created_at), #converting to date format
-               status_url = paste("<a href='", status_url, "' target = '_blank'>View Tweet</a>", sep = ""),
+               status_url2 = paste("<a href='", status_url, "' target = '_blank'>View Tweet</a>", sep = ""),
                hashtags = sapply(hashtags, toString))  
   
   df <-  rename(df, "Tweet Date" = created_at,
@@ -83,7 +84,8 @@ tweet_cleaner <- function (df) {
                 "Retweet Count" = retweet_count,
                 "Hashtags Used" = hashtags,
                 "Verified?" = verified,
-                "Link" = status_url
+                "Link" = status_url2,
+                "Full Link" = status_url
   )
   
   
@@ -159,21 +161,29 @@ tweet_table_gen <- function(df) {
         
         datatable(df,
                   extensions = 'Buttons',
-                  escape = 10,
+                  escape = 11,
                   options = list(
-                  #columnDefs = list(list(targets = c(8), searchable = FALSE)), 
+                    columnDefs = list(list(visible = FALSE, targets = 10)), 
                     dom = 'Bltipr',
-                                 buttons = 
+                                 buttons = list(
                                    list(
-                                     list(extend = 'collection',
-                                          buttons = c('csv', 'excel'),
-                                          text = 'Download Page',
-                                          exportOptions = list(
-                                            modifiers = list(page = 'current')
-                                          )))),
+                                     extend = "excel",
+                                     text = "Download Current Page",
+                                     filename = paste("Twitter Search Results - Current Page -", Sys.Date(), sep = ""),
+                                     exportOptions = list(
+                                       modifier = list(page = "current")
+                                     )
+                                   ),
+                                    list(
+                                      extend = "excel",
+                                      text = "Download Full Results",
+                                      filename = paste("Twitter Search Results - All Pages -", Sys.Date(), sep = ""),
+                                      modifier = list(page = "all")
+                                    )
+                    )),
                   filter = 'top')
       }),
-      server = TRUE
+      server = FALSE
     )
     
   } else {
@@ -457,89 +467,63 @@ most_eng_users <- function(df) {
 # Engagement score is calculated as: Retweets*2 + Likes
 #____________________________________________________________________________
 
+# tweet_freq <- function(df) {
+#   
+#   if(!"Message" %in% colnames(df)) {
+#     df <- df %>% 
+#       janitor::clean_names() %>% 
+#       group_by(tweet_date) %>% 
+#       mutate(count = n())
+#     
+#     plot<- ggplot(df, aes(x = tweet_date, y = count)) +
+#       theme_classic() +
+#       geom_line(color = "#1DA1F2", size = 1) +
+#       geom_point(color = "#1DA1F2", size = 3) +
+#       #scale_x_date(date_labels = "%b %d",date_breaks = "1 day") +
+#       ylab("") +
+#       xlab("") +
+#       theme(axis.title = element_text(size = 14),
+#             axis.text = element_text(size = 14))
+#     
+#   }
+#   else {
+#     
+#     plot <- ggplot() + theme_void()
+#   }
+#   renderPlot(plot)
+#   
+# }
+
 tweet_freq <- function(df) {
-  
   if(!"Message" %in% colnames(df)) {
-    df <- df %>% 
-      janitor::clean_names() %>% 
-      group_by(tweet_date) %>% 
-      mutate(count = n())
-    
-    plot<- ggplot(df, aes(x = tweet_date, y = count)) +
-      theme_classic() +
-      geom_line(color = "#1DA1F2", size = 1) +
-      geom_point(color = "#1DA1F2", size = 3) +
-      #scale_x_date(date_labels = "%b %d",date_breaks = "1 day") +
-      ylab("") +
-      xlab("") +
-      theme(axis.title = element_text(size = 14),
-            axis.text = element_text(size = 14))
-    
+    df <- df %>%
+      janitor::clean_names() %>%
+      group_by(tweet_date) %>%
+      mutate(count = n()) %>%
+      ungroup() %>%
+      arrange(tweet_date) %>%
+      select(tweet_date, count)
+
+    plot <- df %>%
+      e_chart(tweet_date) %>%
+      e_line(count) %>%
+      e_tooltip(
+        formatter = htmlwidgets::JS("
+        function(params) {
+        return('Date: ' + params.value[0] + '<br />Total: ' + params.value[1])
+        }")
+        ) %>%
+      e_legend(FALSE) 
+
   }
   else {
-    
-    plot <- ggplot() + theme_void()
+    plot <- df %>%
+      e_chart()
   }
-  renderPlot(plot)
-  
-}
 
-# ##----SENTIMENT ANALYSIS----------------------------------------------
-# #
-# # Description: Find users with highest level of engagement.
-# # Engagement score is calculated as: Retweets*2 + Likes
-# #____________________________________________________________________________
-# sent_analysis <- function(text) {
-# 
-# df <- data.frame()
-# df <- data.frame(text = c(text))
-#   
-# ## clean up the text a bit (rm mentions and links)
-# df$text <- gsub(
-#   "^RT:?\\s{0,}|#|@\\S+|https?[[:graph:]]+", "", text)
-# ## convert to lower case
-# df$text <- tolower(df$text)
-# ## trim extra white space
-# df$text <- gsub("^\\s{1,}|\\s{1,}$", "", df$text)
-# df$text <- gsub("\\s{2,}", " ", df$text)
-# 
-# ## estimate pos/neg sentiment for each tweet
-# df$sentiment <- syuzhet::get_sentiment(df$text, "syuzhet")
-# 
-# ## write function to round time into rounded var
-# round_time <- function(x, sec) {
-#   as.POSIXct(hms::hms(as.numeric(x) %/% sec * sec))
-# }
-# 
-# ## plot by specified time interval (1-hours)
-# df <- df %>%
-#   mutate(time = round_time(created_at, 60 * 60)) %>%
-#   group_by(time) %>%
-#   summarise(sentiment = mean(sentiment, na.rm = TRUE)) %>%
-#   mutate(valence = ifelse(sentiment > 0L, "Positive", "Negative")) %>%
-#   ggplot(aes(x = time, y = sentiment)) +
-#   geom_smooth(method = "loess", span = .1,
-#               colour = "#aa11aadd", fill = "#bbbbbb11") +
-#   geom_point(aes(fill = valence, colour = valence), 
-#              shape = 21, alpha = .6, size = 3.5) +
-#   theme_minimal(base_size = 15, base_family = "Roboto Condensed") +
-#   theme(legend.position = "none",
-#         axis.text = element_text(colour = "#222222"),
-#         plot.title = element_text(size = rel(1.7), face = "bold"),
-#         plot.subtitle = element_text(size = rel(1.3)),
-#         plot.caption = element_text(colour = "#444444")) +
-#   scale_fill_manual(
-#     values = c(Positive = "#2244ee", Negative = "#dd2222")) +
-#   scale_colour_manual(
-#     values = c(Positive = "#001155", Negative = "#550000")) +
-#   labs(x = NULL, y = NULL,
-#        title = "Sentiment (valence) of rstudio::conf tweets over time",
-#        subtitle = "Mean sentiment of tweets aggregated in one-hour intervals",
-#        caption = "\nSource: Data gathered using rtweet. Sentiment analysis done using syuzhet")
-# 
-# renderPlot(df)
-# 
-# }
+  renderEcharts4r({
+    plot})
+}
 
 ##----VALIDATION FUNCTION----------------------------------------------------
 #
@@ -1210,7 +1194,7 @@ ui <-
                                        width = NULL,
                                        title = "Tweet Frequency",
                                        status = "primary",
-                                       div(plotOutput("tweet_freq_chart"), width = "100%")
+                                       div(echarts4rOutput('tweet_freq_chart'), width = "100%")
                                      ))))
         ) #2nd fluid row closer 
         , fluidRow(
